@@ -1,0 +1,20 @@
+# Only needed for local/manual terraform runs. The GitHub Actions workflow does
+# NOT use this file — it passes the same values via -backend-config from the
+# aws-demo environment variables (TF_STATE_BUCKET, TF_STATE_KEY, AWS_REGION).
+#
+# For a manual run:
+#   1. Create the S3 bucket in the AWS Console (see deploy.md Step 2).
+#   2. Copy this file to backend.hcl and fill in the bucket name.
+#   3. terraform init -backend-config=backend.hcl
+#
+# backend.hcl (without .example) is gitignored because the bucket name is
+# account-specific.
+
+bucket = "REPLACE-with-your-state-bucket-name"
+key    = "dash0-lab/demo/terraform.tfstate"
+region = "us-east-1"
+
+# S3 native locking (Terraform 1.10+). No DynamoDB lock table required.
+use_lockfile = true
+
+encrypt = true

@@ -1,0 +1,91 @@
+apiVersion: perses.dev/v1alpha1
+kind: PersesDashboard
+metadata:
+  name: dash0-eks-demo-overview
+  dash0Extensions:
+    id: 9a4f9bd0-91ad-4fa8-8b0d-0d0b67d05a00
+spec:
+  duration: 1h
+  display:
+    name: Dash0 EKS Demo Overview
+  layouts:
+    - kind: Grid
+      spec:
+        items:
+          - x: 0
+            "y": 0
+            width: 8
+            height: 7
+            content:
+              $ref: "#/spec/panels/nodes"
+          - x: 8
+            "y": 0
+            width: 8
+            height: 7
+            content:
+              $ref: "#/spec/panels/pods"
+          - x: 16
+            "y": 0
+            width: 8
+            height: 7
+            content:
+              $ref: "#/spec/panels/traces"
+  panels:
+    nodes:
+      kind: Panel
+      spec:
+        display:
+          name: Ready EKS Nodes
+        plugin:
+          kind: StatChart
+          spec:
+            calculation: last-number
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: count({otel_metric_name="k8s.node.condition_ready"} == 1)
+    pods:
+      kind: Panel
+      spec:
+        display:
+          name: Running Pods
+        plugin:
+          kind: StatChart
+          spec:
+            calculation: last-number
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: sum({otel_metric_name="k8s.pod.phase",phase="Running"})
+    traces:
+      kind: Panel
+      spec:
+        display:
+          name: P75 Span Duration by Service
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            visual:
+              display: line
+              areaOpacity: 0.35
+              palette:
+                mode: auto
+            yAxis:
+              format:
+                unit: milliseconds
+              min: 0
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  minStep: 5m
+                  query: histogram_quantile(0.75, sum by (service_name) (rate({otel_metric_name="dash0.spans.duration"}[$__interval]))) * 1000
+                  seriesNameFormat: "{{service_name}}"

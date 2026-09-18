@@ -1,0 +1,304 @@
+name: Dash0 EKS lifecycle
+
+on:
+  pull_request:
+    paths:
+      [
+        "terraform/**",
+        "modules/**",
+        "scripts/**",
+        ".github/workflows/terraform.yml",
+      ]
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Lifecycle action
+        type: choice
+        options: [plan, apply, destroy]
+        default: plan
+      profile:
+        description: Compatible profile layered on core
+        type: choice
+        options:
+          [
+            core,
+            mesh-istio,
+            network-cilium,
+            gitops,
+            data,
+            observability,
+            everything,
+          ]
+        default: core
+      confirm:
+        description: "For changes type apply:PROFILE or destroy:PROFILE"
+        type: string
+        required: false
+      delete_backend:
+        description: Delete state bucket after a verified clean destroy
+        type: boolean
+        default: false
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: dash0-eks-${{ vars.TF_STATE_KEY || 'dash0-lab-demo' }}
+  cancel-in-progress: false
+
+env:
+  TF_VERSION: "1.16.2"
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+  TF_STATE_KEY: ${{ vars.TF_STATE_KEY || 'dash0-lab/demo/terraform.tfstate' }}
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+  TF_VAR_dash0_otlp_grpc_endpoint: ${{ vars.DASH0_OTLP_GRPC_ENDPOINT }}
+  TF_VAR_dash0_api_endpoint: ${{ vars.DASH0_API_ENDPOINT }}
+  TF_VAR_dash0_auth_token: ${{ secrets.DASH0_AUTH_TOKEN }}
+  TF_VAR_dash0_dataset: ${{ vars.DASH0_DATASET || 'default' }}
+  TF_VAR_ci_role_arn: ${{ vars.AWS_ROLE_ARN }}
+  TF_VAR_repository_url: ${{ github.server_url }}/${{ github.repository }}
+  DASH0_API_URL: ${{ vars.DASH0_API_ENDPOINT }}
+  DASH0_AUTH_TOKEN: ${{ secrets.DASH0_AUTH_TOKEN }}
+  DASH0_DATASET: ${{ vars.DASH0_DATASET || 'default' }}
+
+jobs:
+  lifecycle:
+    runs-on: ubuntu-latest
+    environment: aws-demo
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Initialize run state
+        id: context
+        shell: bash
+        run: |
+          mkdir -p .ci
+          for name in validate backend plan change readiness dash0 cleanup; do echo skipped > ".ci/$name.status"; done
+          printf 'retained\n' > .ci/backend-final.status
+          printf '0\n' | tee .ci/add.count .ci/change.count .ci/destroy.count .ci/state-before.count .ci/state-after.count >/dev/null
+          printf '{"eks":0,"ec2":0,"nat":0,"elbv2":0,"classic_elb":0,"eip":0,"eni":0,"ebs":0,"other_tagged":0,"total":0}\n' > .ci/cleanup.json
+          printf '{}\n' > .ci/dash0.json
+          ACTION="${{ github.event_name == 'pull_request' && 'plan' || inputs.action }}"
+          PROFILE="${{ github.event_name == 'pull_request' && 'core' || inputs.profile }}"
+          echo "action=$ACTION" >> "$GITHUB_OUTPUT"
+          echo "profile=$PROFILE" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Validate inputs and secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTION="${{ steps.context.outputs.action }}"
+          PROFILE="${{ steps.context.outputs.profile }}"
+          [ -n "$TF_STATE_BUCKET" ] || { echo "TF_STATE_BUCKET is not configured in aws-demo."; exit 1; }
+          [ -n "${{ vars.AWS_ROLE_ARN }}" ] || { echo "AWS_ROLE_ARN is not configured in aws-demo."; exit 1; }
+          if [ "$ACTION" != plan ]; then
+            EXPECTED="$ACTION:$PROFILE"
+            [ "${{ inputs.confirm }}" = "$EXPECTED" ] || { echo "Confirmation must be exactly: $EXPECTED"; exit 1; }
+          fi
+          if [ "${{ inputs.delete_backend || false }}" = true ] && [ "$ACTION" != destroy ]; then
+            echo "delete_backend is valid only with destroy."; exit 1
+          fi
+
+      - name: Static Terraform validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          terraform fmt -check -recursive -diff
+          for dir in modules/*/; do
+            [ -f "$dir/versions.tf" ] || continue
+            terraform -chdir="$dir" init -backend=false -input=false
+            terraform -chdir="$dir" validate
+          done
+          terraform -chdir=terraform/live init -backend=false -input=false
+          terraform -chdir=terraform/live validate
+          echo passed > .ci/validate.status
+      - name: Configure temporary AWS credentials
+        uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c # v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: dash0-${{ steps.context.outputs.action }}-${{ github.run_id }}
+
+      - name: Mask sensitive values
+        shell: bash
+        run: |
+          echo "::add-mask::$DASH0_AUTH_TOKEN"
+          [ -n "$DASH0_AUTH_TOKEN" ] || { echo "DASH0_AUTH_TOKEN is empty."; exit 1; }
+
+      - name: Verify state backend exists
+        shell: bash
+        run: |
+          chmod +x scripts/ci/*.sh scripts/verify-dash0.sh
+          scripts/ci/backend.sh verify
+          echo passed > .ci/backend.status
+
+      - name: Initialize live state
+        working-directory: terraform/live
+        shell: bash
+        run: |
+          terraform init -reconfigure -input=false \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="key=$TF_STATE_KEY" \
+            -backend-config="region=$AWS_REGION" \
+            -backend-config="use_lockfile=true" \
+            -backend-config="encrypt=true"
+          terraform state list 2>/dev/null | sed '/^$/d' | wc -l | tr -d ' ' > ../../.ci/state-before.count
+
+      - name: Build profile arguments
+        id: vars
+        shell: bash
+        run: |
+          PROFILE="${{ steps.context.outputs.profile }}"
+          ARGS="-var-file=env/core.tfvars"
+          [ "$PROFILE" = core ] || ARGS="$ARGS -var-file=env/$PROFILE.tfvars"
+          echo "args=$ARGS" >> "$GITHUB_OUTPUT"
+
+      - name: Create saved plan
+        id: plan
+        working-directory: terraform/live
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTION="${{ steps.context.outputs.action }}"
+          DESTROY=""
+          [ "$ACTION" = destroy ] && DESTROY="-destroy"
+          terraform plan $DESTROY -input=false -lock-timeout=5m \
+            ${{ steps.vars.outputs.args }} -out=tfplan
+          terraform show -json tfplan > ../../.ci/plan.json
+          jq '[.resource_changes[]? | select(.change.actions | index("create"))] | length' ../../.ci/plan.json > ../../.ci/add.count
+          jq '[.resource_changes[]? | select(.change.actions == ["update"])] | length' ../../.ci/plan.json > ../../.ci/change.count
+          jq '[.resource_changes[]? | select(.change.actions | index("delete"))] | length' ../../.ci/plan.json > ../../.ci/destroy.count
+          cp ../../.ci/state-before.count ../../.ci/state-after.count
+          echo passed > ../../.ci/plan.status
+
+      - name: Install pinned Dash0 CLI
+        if: steps.context.outputs.action == 'apply' || steps.context.outputs.action == 'destroy'
+        shell: bash
+        run: |
+          curl --fail --silent --show-error --location \
+            -o /tmp/dash0.tar.gz \
+            https://github.com/dash0hq/dash0-cli/releases/download/v1.9.0/dash0_1.9.0_linux_amd64.tar.gz
+          echo '88145ce72e64c522cbee0339f0b38a1e859ad239c03520094d5982814f38dbbd  /tmp/dash0.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/dash0.tar.gz -C /tmp
+          sudo install -m 0755 /tmp/dash0 /usr/local/bin/dash0
+
+      - name: Remove managed Dash0 dashboard
+        if: steps.context.outputs.action == 'destroy'
+        shell: bash
+        run: |
+          set +e
+          OUTPUT=$(dash0 dashboards delete 9a4f9bd0-91ad-4fa8-8b0d-0d0b67d05a00 --force 2>&1)
+          EXIT=$?
+          set -e
+          if [ "$EXIT" -ne 0 ] && ! grep -Eqi 'not found|404' <<<"$OUTPUT"; then
+            echo "Managed Dash0 dashboard deletion failed." >&2
+            exit "$EXIT"
+          fi
+
+      - name: Drain Kubernetes external resources
+        if: steps.context.outputs.action == 'destroy'
+        shell: bash
+        env:
+          CLUSTER_NAME: dash0-lab-demo
+        run: scripts/ci/cleanup.sh drain
+
+      - name: Apply saved plan
+        id: apply
+        if: steps.context.outputs.action == 'apply' || steps.context.outputs.action == 'destroy'
+        working-directory: terraform/live
+        shell: bash
+        run: |
+          set +e
+          terraform apply -input=false -lock-timeout=5m tfplan
+          EXIT=$?
+          terraform state list 2>/dev/null | sed '/^$/d' | wc -l | tr -d ' ' > ../../.ci/state-after.count
+          if [ "$EXIT" -eq 0 ]; then echo passed > ../../.ci/change.status; else echo failed > ../../.ci/change.status; fi
+          exit "$EXIT"
+
+      - name: Recover from partial destroy
+        if: always() && steps.context.outputs.action == 'destroy' && steps.plan.outcome == 'success' && steps.apply.outcome == 'failure'
+        working-directory: terraform/live
+        shell: bash
+        run: |
+          set -euo pipefail
+          REMAINING=$(terraform state list 2>/dev/null | sed '/^$/d' | wc -l | tr -d ' ')
+          if [ "$REMAINING" -gt 0 ]; then
+            echo "Recovery destroy for $REMAINING resources remaining after the first attempt."
+            terraform plan -destroy -input=false -lock-timeout=5m \
+              ${{ steps.vars.outputs.args }} -out=recovery.tfplan
+            terraform apply -input=false -lock-timeout=5m recovery.tfplan
+          fi
+          terraform state list 2>/dev/null | sed '/^$/d' | wc -l | tr -d ' ' > ../../.ci/state-after.count
+
+      - name: Wait for EKS workloads
+        if: steps.context.outputs.action == 'apply'
+        working-directory: terraform/live
+        shell: bash
+        run: |
+          CLUSTER_NAME=$(terraform output -raw cluster_name)
+          echo "cluster_name=$CLUSTER_NAME" >> "$GITHUB_ENV"
+          aws eks update-kubeconfig --region "$AWS_REGION" --name "$CLUSTER_NAME" >/dev/null
+          ../../scripts/ci/wait-ready.sh
+          echo passed > ../../.ci/readiness.status
+
+      - name: Verify Dash0 backend data
+        if: steps.context.outputs.action == 'apply'
+        shell: bash
+        env:
+          DASH0_RESULT_FILE: .ci/dash0.json
+        run: |
+          scripts/verify-dash0.sh
+          echo passed > .ci/dash0.status
+
+      - name: Apply Dash0 dashboard as code
+        if: steps.context.outputs.action == 'apply'
+        shell: bash
+        run: dash0 apply -f dash0-assets/eks-overview.yaml
+
+      - name: Verify destroy and clean owned orphans
+        if: always() && steps.context.outputs.action == 'destroy'
+        shell: bash
+        env:
+          CLUSTER_NAME: dash0-lab-demo
+          CLEANUP_RESULT_FILE: .ci/cleanup.json
+        run: |
+          scripts/ci/cleanup.sh cleanup
+          STATE_AFTER=$(cat .ci/state-after.count)
+          [ "$STATE_AFTER" -eq 0 ] || { echo "Terraform state still contains $STATE_AFTER resources."; exit 1; }
+          echo passed > .ci/cleanup.status
+
+      - name: Delete verified-empty backend
+        if: always() && steps.context.outputs.action == 'destroy' && inputs.delete_backend
+        shell: bash
+        run: |
+          [ "$(cat .ci/cleanup.status)" = passed ]
+          [ "$(cat .ci/state-after.count)" -eq 0 ]
+          [ "$(jq -r '.total' .ci/cleanup.json)" -eq 0 ]
+          scripts/ci/backend.sh delete
+          echo deleted > .ci/backend-final.status
+
+      - name: Mark retained backend
+        if: always()
+        shell: bash
+        run: |
+          [ "$(cat .ci/backend-final.status)" = deleted ] || echo retained > .ci/backend-final.status
+
+      - name: Publish lifecycle summary
+        if: always()
+        shell: bash
+        env:
+          ACTION: ${{ steps.context.outputs.action }}
+          PROFILE: ${{ steps.context.outputs.profile }}
+          OVERALL: ${{ job.status }}
+        run: bash scripts/ci/summary.sh
