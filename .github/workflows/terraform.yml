@@ -170,7 +170,10 @@ jobs:
             -backend-config="region=$AWS_REGION" \
             -backend-config="use_lockfile=true" \
             -backend-config="encrypt=true"
-          terraform state list 2>/dev/null | sed '/^$/d' | wc -l | tr -d ' ' > ../../.ci/state-before.count
+          # `terraform state list` exits non-zero on a brand-new empty state; do
+          # not let that fail the step.
+          COUNT=$(terraform state list 2>/dev/null | sed '/^$/d' | wc -l | tr -d ' ' || true)
+          echo "${COUNT:-0}" > ../../.ci/state-before.count
 
       - name: Build profile arguments
         id: vars
@@ -236,7 +239,8 @@ jobs:
           set +e
           terraform apply -input=false -lock-timeout=5m tfplan
           EXIT=$?
-          terraform state list 2>/dev/null | sed '/^$/d' | wc -l | tr -d ' ' > ../../.ci/state-after.count
+          COUNT=$(terraform state list 2>/dev/null | sed '/^$/d' | wc -l | tr -d ' ')
+          echo "${COUNT:-0}" > ../../.ci/state-after.count
           if [ "$EXIT" -eq 0 ]; then echo passed > ../../.ci/change.status; else echo failed > ../../.ci/change.status; fi
           exit "$EXIT"
 
@@ -245,15 +249,17 @@ jobs:
         working-directory: terraform/live
         shell: bash
         run: |
-          set -euo pipefail
-          REMAINING=$(terraform state list 2>/dev/null | sed '/^$/d' | wc -l | tr -d ' ')
+          set -uo pipefail
+          REMAINING=$(terraform state list 2>/dev/null | sed '/^$/d' | wc -l | tr -d ' ' || true)
+          REMAINING=${REMAINING:-0}
           if [ "$REMAINING" -gt 0 ]; then
             echo "Recovery destroy for $REMAINING resources remaining after the first attempt."
             terraform plan -destroy -input=false -lock-timeout=5m \
-              ${{ steps.vars.outputs.args }} -out=recovery.tfplan
-            terraform apply -input=false -lock-timeout=5m recovery.tfplan
+              ${{ steps.vars.outputs.args }} -out=recovery.tfplan || exit 1
+            terraform apply -input=false -lock-timeout=5m recovery.tfplan || exit 1
           fi
-          terraform state list 2>/dev/null | sed '/^$/d' | wc -l | tr -d ' ' > ../../.ci/state-after.count
+          COUNT=$(terraform state list 2>/dev/null | sed '/^$/d' | wc -l | tr -d ' ' || true)
+          echo "${COUNT:-0}" > ../../.ci/state-after.count
 
       - name: Wait for EKS workloads
         if: steps.context.outputs.action == 'apply'
