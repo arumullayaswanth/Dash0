@@ -190,7 +190,7 @@ Real, billable infrastructure: an EKS control plane (~$0.10/hour the moment it
 exists), NAT gateway, EC2 nodes, EBS volumes and load balancers. Baseline is about
 $0.15/hour before any nodes.
 
-Select `destroy` in **Dash0 EKS lifecycle** when recording is finished. The workflow deletes LoadBalancer services and persistent workloads before EKS, waits for AWS cleanup, checks tagged orphans, and fails if any billable demo resource remains. Use `delete_backend=true` only for the final session.
+Select `destroy` in **Dash0 EKS lifecycle** (with `confirm = yes`) when recording is finished. The workflow deletes LoadBalancer services and persistent workloads before EKS, waits for AWS cleanup, checks tagged orphans, and fails if any billable demo resource remains. The S3 state bucket is left alone; delete it manually if you no longer need it.
 
 Full breakdown and cleanup checks in [docs/COSTS.md](docs/COSTS.md).
 

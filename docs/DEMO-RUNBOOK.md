@@ -7,8 +7,7 @@ Use only **GitHub → Actions → Dash0 EKS lifecycle** for lifecycle operations
 Run the workflow with:
 
 - `action` = `apply`
-- `confirm` = `yes`
-- `delete_backend` = `false`
+- `confirm` = `no` (only destroy needs `yes`)
 
 This creates the VPC, EKS cluster, node group, bastion, cert-manager, metrics-server, the Dash0 operator and collector, and the OpenTelemetry Demo as a traffic source. Roughly 20–30 minutes.
 
@@ -53,6 +52,6 @@ Mind the conflict rules in `modules/platform-addons/guards.tf`: Istio and Linker
 
 ## Teardown
 
-Run the workflow with `action` = `destroy`, `confirm` = `yes`, `delete_backend` = `false`.
+Run the workflow with `action` = `destroy` and `confirm` = `yes`.
 
 It removes the managed Dash0 dashboard, drains Kubernetes LoadBalancer services and PVC-backed workloads, applies a saved destroy plan, retries partial destruction, removes only exact-owned AWS orphans, and fails unless Terraform state and all remaining AWS resource categories are zero. Capture the final Summary as teardown evidence.

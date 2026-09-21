@@ -38,5 +38,5 @@ OVERALL="${OVERALL:-unknown}"
   echo "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
   echo "| $(json_num .ci/cleanup.json eks) | $(json_num .ci/cleanup.json ec2) | $(json_num .ci/cleanup.json nat) | $(json_num .ci/cleanup.json elbv2) | $(json_num .ci/cleanup.json classic_elb) | $(json_num .ci/cleanup.json eip) | $(json_num .ci/cleanup.json eni) | $(json_num .ci/cleanup.json ebs) | $(json_num .ci/cleanup.json other_tagged) | $(json_num .ci/cleanup.json total) |"
   echo
-  echo "Backend: **$(status .ci/backend-final.status)**. One-time GitHub OIDC/IAM resources are intentionally retained."
+  echo "State bucket, GitHub OIDC provider and IAM role are retained (managed outside this workflow)."
 } >> "$GITHUB_STEP_SUMMARY"

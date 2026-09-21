@@ -99,10 +99,9 @@ Same page → **Secrets** tab → **New repository secret**:
 
 1. Repo → **Actions** → **Dash0 EKS lifecycle** → **Run workflow**.
 2. action = `apply`.
-3. confirm = `yes`.
-4. delete_backend = `false`.
-5. Click **Run workflow**.
-6. Wait until **Overall result** is success.
+3. Leave confirm as `no` (not needed for apply).
+4. Click **Run workflow**.
+5. Wait until **Overall result** is success.
 
 ## 7. See results in Dash0
 
@@ -124,9 +123,7 @@ Same page → **Secrets** tab → **New repository secret**:
 
 ## 9. Destroy
 
-1. **Run workflow**: action = `destroy`, confirm = `yes`, delete_backend = `false`.
+1. **Run workflow**: action = `destroy`, confirm = `yes`.
 2. Wait until **Overall result** is success and remaining resource counts are `0`.
 
-## 10. Final destroy (also delete the bucket)
-
-1. **Run workflow**: action = `destroy`, confirm = `yes`, delete_backend = `true`.
+The `dash0demo` S3 bucket is never deleted by the workflow. Delete it manually in the S3 console if you no longer need it.

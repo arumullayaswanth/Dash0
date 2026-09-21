@@ -17,14 +17,10 @@ on:
         options: [plan, apply, destroy]
         default: plan
       confirm:
-        description: Type yes to confirm apply or destroy
+        description: Type yes to confirm destroy (ignored for plan and apply)
         type: string
         default: "no"
         required: false
-      delete_backend:
-        description: Delete state bucket after a verified clean destroy
-        type: boolean
-        default: false
 
 permissions:
   id-token: write
@@ -65,7 +61,6 @@ jobs:
         run: |
           mkdir -p .ci
           for name in validate backend plan change readiness dash0 cleanup; do echo skipped > ".ci/$name.status"; done
-          printf 'retained\n' > .ci/backend-final.status
           printf '0\n' | tee .ci/add.count .ci/change.count .ci/destroy.count .ci/state-before.count .ci/state-after.count >/dev/null
           printf '{"eks":0,"ec2":0,"nat":0,"elbv2":0,"classic_elb":0,"eip":0,"eni":0,"ebs":0,"other_tagged":0,"total":0}\n' > .ci/cleanup.json
           printf '{}\n' > .ci/dash0.json
@@ -88,12 +83,10 @@ jobs:
           PROFILE="${{ steps.context.outputs.profile }}"
           [ -n "$TF_STATE_BUCKET" ] || { echo "TF_STATE_BUCKET repository variable is not set."; exit 1; }
           [ -n "${{ vars.AWS_ROLE_ARN }}" ] || { echo "AWS_ROLE_ARN repository variable is not set."; exit 1; }
-          if [ "$ACTION" != plan ]; then
+          # Only destroy needs a typed confirmation. plan and apply run directly.
+          if [ "$ACTION" = destroy ]; then
             CONFIRM=$(printf '%s' "${{ inputs.confirm }}" | tr '[:upper:]' '[:lower:]')
-            [ "$CONFIRM" = yes ] || { echo "Confirmation must be exactly: yes"; exit 1; }
-          fi
-          if [ "${{ inputs.delete_backend || false }}" = true ] && [ "$ACTION" != destroy ]; then
-            echo "delete_backend is valid only with destroy."; exit 1
+            [ "$CONFIRM" = yes ] || { echo "Destroy requires confirm = yes"; exit 1; }
           fi
 
       - name: Static Terraform validation
@@ -260,22 +253,6 @@ jobs:
           STATE_AFTER=$(cat .ci/state-after.count)
           [ "$STATE_AFTER" -eq 0 ] || { echo "Terraform state still contains $STATE_AFTER resources."; exit 1; }
           echo passed > .ci/cleanup.status
-
-      - name: Delete verified-empty backend
-        if: always() && steps.context.outputs.action == 'destroy' && inputs.delete_backend
-        shell: bash
-        run: |
-          [ "$(cat .ci/cleanup.status)" = passed ]
-          [ "$(cat .ci/state-after.count)" -eq 0 ]
-          [ "$(jq -r '.total' .ci/cleanup.json)" -eq 0 ]
-          scripts/ci/backend.sh delete
-          echo deleted > .ci/backend-final.status
-
-      - name: Mark retained backend
-        if: always()
-        shell: bash
-        run: |
-          [ "$(cat .ci/backend-final.status)" = deleted ] || echo retained > .ci/backend-final.status
 
       - name: Publish lifecycle summary
         if: always()

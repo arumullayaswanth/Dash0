@@ -6,11 +6,10 @@ That guide covers the only manual work required once: creating the S3 state buck
 
 After that, use the single **Dash0 EKS lifecycle** workflow under GitHub Actions:
 
-| Goal | action | confirm | delete_backend |
-|---|---|---|---|
-| Preview changes | `plan` | empty | `false` |
-| Create the demo | `apply` | `yes` | `false` |
-| Remove live resources | `destroy` | `yes` | `false` |
-| Final removal including state bucket | `destroy` | `yes` | `true` |
+| Goal | action | confirm |
+|---|---|---|
+| Preview changes | `plan` | `no` |
+| Create the demo | `apply` | `no` |
+| Remove live resources | `destroy` | `yes` |
 
 Do not run local Terraform, Helm, kubectl, or AWS CLI commands for routine operation. The workflow verifies the manually created backend bucket, saves and applies exact plans, checks EKS and Dash0, performs ordered teardown, checks owned AWS orphans, and publishes the result and resource counts in GitHub Summary.
