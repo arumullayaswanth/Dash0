@@ -83,6 +83,21 @@ jobs:
           PROFILE="${{ steps.context.outputs.profile }}"
           [ -n "$TF_STATE_BUCKET" ] || { echo "TF_STATE_BUCKET repository variable is not set."; exit 1; }
           [ -n "${{ vars.AWS_ROLE_ARN }}" ] || { echo "AWS_ROLE_ARN repository variable is not set."; exit 1; }
+
+          # Catch a wrong Dash0 endpoint here rather than minutes into Terraform.
+          case "${{ vars.AWS_ROLE_ARN }}" in
+            arn:aws:iam::*:role/*) ;;
+            *) echo "AWS_ROLE_ARN must look like arn:aws:iam::<account-id>:role/<name>."; exit 1 ;;
+          esac
+          if ! printf '%s' "$TF_VAR_dash0_otlp_grpc_endpoint" | grep -Eq '^(https://)?ingress\..*dash0\.com:4317$'; then
+            echo "DASH0_OTLP_GRPC_ENDPOINT must be the OTLP/gRPC endpoint, e.g. ingress.<region>.aws.dash0.com:4317"
+            echo "It must not contain a URL path and must not be the OTLP/HTTP endpoint."
+            exit 1
+          fi
+          if ! printf '%s' "$TF_VAR_dash0_api_endpoint" | grep -Eq '^https://api\..*dash0\.com/?$'; then
+            echo "DASH0_API_ENDPOINT must look like https://api.<region>.aws.dash0.com"
+            exit 1
+          fi
           # Only destroy needs a typed confirmation. plan and apply run directly.
           if [ "$ACTION" = destroy ]; then
             CONFIRM=$(printf '%s' "${{ inputs.confirm }}" | tr '[:upper:]' '[:lower:]')
