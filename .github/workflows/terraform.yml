@@ -16,23 +16,10 @@ on:
         type: choice
         options: [plan, apply, destroy]
         default: plan
-      profile:
-        description: Compatible profile layered on core
-        type: choice
-        options:
-          [
-            core,
-            mesh-istio,
-            network-cilium,
-            gitops,
-            data,
-            observability,
-            everything,
-          ]
-        default: core
       confirm:
-        description: "For changes type apply:PROFILE or destroy:PROFILE"
+        description: Type yes to confirm apply or destroy
         type: string
+        default: "no"
         required: false
       delete_backend:
         description: Delete state bucket after a verified clean destroy
@@ -83,7 +70,7 @@ jobs:
           printf '{"eks":0,"ec2":0,"nat":0,"elbv2":0,"classic_elb":0,"eip":0,"eni":0,"ebs":0,"other_tagged":0,"total":0}\n' > .ci/cleanup.json
           printf '{}\n' > .ci/dash0.json
           ACTION="${{ github.event_name == 'pull_request' && 'plan' || inputs.action }}"
-          PROFILE="${{ github.event_name == 'pull_request' && 'core' || inputs.profile }}"
+          PROFILE="core"
           echo "action=$ACTION" >> "$GITHUB_OUTPUT"
           echo "profile=$PROFILE" >> "$GITHUB_OUTPUT"
 
@@ -102,8 +89,8 @@ jobs:
           [ -n "$TF_STATE_BUCKET" ] || { echo "TF_STATE_BUCKET repository variable is not set."; exit 1; }
           [ -n "${{ vars.AWS_ROLE_ARN }}" ] || { echo "AWS_ROLE_ARN repository variable is not set."; exit 1; }
           if [ "$ACTION" != plan ]; then
-            EXPECTED="$ACTION:$PROFILE"
-            [ "${{ inputs.confirm }}" = "$EXPECTED" ] || { echo "Confirmation must be exactly: $EXPECTED"; exit 1; }
+            CONFIRM=$(printf '%s' "${{ inputs.confirm }}" | tr '[:upper:]' '[:lower:]')
+            [ "$CONFIRM" = yes ] || { echo "Confirmation must be exactly: yes"; exit 1; }
           fi
           if [ "${{ inputs.delete_backend || false }}" = true ] && [ "$ACTION" != destroy ]; then
             echo "delete_backend is valid only with destroy."; exit 1
@@ -158,10 +145,7 @@ jobs:
         id: vars
         shell: bash
         run: |
-          PROFILE="${{ steps.context.outputs.profile }}"
-          ARGS="-var-file=env/core.tfvars"
-          [ "$PROFILE" = core ] || ARGS="$ARGS -var-file=env/$PROFILE.tfvars"
-          echo "args=$ARGS" >> "$GITHUB_OUTPUT"
+          echo "args=-var-file=env/core.tfvars" >> "$GITHUB_OUTPUT"
 
       - name: Create saved plan
         id: plan

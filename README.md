@@ -134,18 +134,16 @@ Complete the one-time AWS OIDC, protected GitHub environment, and Dash0 secret s
 
 No local Terraform, Helm, kubectl, or AWS CLI command is required for normal operation.
 
-| Profile | What it is for | ~$/hr |
-|---|---|---|
-| `core` | Cluster, Dash0, OTel Demo. The baseline. | 0.35 |
-| `mesh-istio` | Istio + Traefik, both exporting OTLP natively | 0.58 |
-| `network-cilium` | Cilium CNI + Hubble eBPF L7 metrics | 0.53 |
-| `gitops` | ArgoCD, FluxCD, Atlantis | 0.45 |
-| `data` | Postgres, MySQL, RabbitMQ, Kafka | 0.55–0.95 |
-| `observability` | Prometheus CRDs, Grafana, Perses, KEDA | 0.73 |
-| `everything` | Proves the catalog coexists. Not for recording. | 1.60–2.45 |
+The workflow deploys the `core` stack in one run: VPC, EKS, node group, bastion,
+cert-manager, metrics-server, the Dash0 operator and collector, and the
+OpenTelemetry Demo as a traffic source. Roughly $0.35/hour, 20–30 minutes.
 
-What each one is worth showing on camera is in
-[docs/DEMO-RUNBOOK.md](docs/DEMO-RUNBOOK.md).
+The optional technology profiles (Istio, Cilium, GitOps, data stores, Prometheus)
+still exist in `modules/platform-addons` behind feature flags in
+`terraform/live/env/core.tfvars`. Edit that file to enable more, and mind the
+conflict rules in `modules/platform-addons/guards.tf`.
+
+What is worth showing on camera is in [docs/DEMO-RUNBOOK.md](docs/DEMO-RUNBOOK.md).
 
 ---
 

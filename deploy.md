@@ -99,11 +99,10 @@ Same page → **Secrets** tab → **New repository secret**:
 
 1. Repo → **Actions** → **Dash0 EKS lifecycle** → **Run workflow**.
 2. action = `apply`.
-3. profile = `core`.
-4. confirm = `apply:core`.
-5. delete_backend = `false`.
-6. Click **Run workflow**.
-7. Wait until **Overall result** is success.
+3. confirm = `yes`.
+4. delete_backend = `false`.
+5. Click **Run workflow**.
+6. Wait until **Overall result** is success.
 
 ## 7. See results in Dash0
 
@@ -123,15 +122,11 @@ Same page → **Secrets** tab → **New repository secret**:
    - `kubectl get pods -A`
    - `kubectl get pods -n otel-demo`
 
-## 9. Change profile
+## 9. Destroy
 
-1. **Run workflow**: action = `apply`, profile = `<name>`, confirm = `apply:<name>`, delete_backend = `false`.
-
-## 10. Destroy
-
-1. **Run workflow**: action = `destroy`, profile = the applied profile, confirm = `destroy:<profile>`, delete_backend = `false`.
+1. **Run workflow**: action = `destroy`, confirm = `yes`, delete_backend = `false`.
 2. Wait until **Overall result** is success and remaining resource counts are `0`.
 
-## 11. Final destroy (also delete the bucket)
+## 10. Final destroy (also delete the bucket)
 
-1. **Run workflow**: action = `destroy`, profile = the applied profile, confirm = `destroy:<profile>`, delete_backend = `true`.
+1. **Run workflow**: action = `destroy`, confirm = `yes`, delete_backend = `true`.

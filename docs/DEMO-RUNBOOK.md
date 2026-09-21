@@ -2,73 +2,57 @@
 
 Use only **GitHub → Actions → Dash0 EKS lifecycle** for lifecycle operations. Complete [deploy.md](../deploy.md) first. Every apply waits for EKS and verifies metrics, logs, Kubernetes events, and spans in Dash0 before reporting success.
 
-## Core profile
+## Deploy
 
-Run with:
+Run the workflow with:
 
-- `action=apply`
-- `profile=core`
-- `confirm=apply:core`
-- `delete_backend=false`
+- `action` = `apply`
+- `confirm` = `yes`
+- `delete_backend` = `false`
 
-This creates EKS, the Dash0 operator, and the OpenTelemetry Demo. The strongest opening is the automatically populated multi-service map: show service dependencies, open one distributed trace, then jump to its correlated logs and Kubernetes resources.
+This creates the VPC, EKS cluster, node group, bastion, cert-manager, metrics-server, the Dash0 operator and collector, and the OpenTelemetry Demo as a traffic source. Roughly 20–30 minutes.
 
-In Dash0, select the configured dataset and filter `k8s.cluster.name = dash0-lab-demo`. Open the managed **Dash0 EKS Demo Overview** dashboard for ready nodes, running pods, and service latency.
+## What to show
 
-## Istio mesh profile
+1. Open the workflow **Summary**: action, planned/created counts, readiness, and Dash0 evidence.
+2. In Dash0, select the `demo` dataset and filter `k8s.cluster.name = dash0-lab-demo`.
+3. Open the **Dash0 EKS Demo Overview** dashboard: ready nodes, running pods, service latency.
+4. Open **Kubernetes** and walk cluster → nodes → namespaces → workloads → pods.
+5. Open **Services** / **Service Map**. The ~15 demo services were never modified for Dash0; the operator injected instrumentation and the map built itself.
+6. Open one distributed **trace** and follow a request across services.
+7. From the trace, jump to correlated **Logs** and **Events**.
+8. Show **host metrics** per node.
 
-Run `action=apply`, `profile=mesh-istio`, `confirm=apply:mesh-istio`.
+## Trigger a failure on demand
 
-Show application spans and Istio proxy spans for the same request. Explain that both reach the in-cluster Dash0 OpenTelemetry collector without exposing a public collector.
+The OpenTelemetry Demo ships feature flags for deliberate breakage. From the bastion:
 
-Do not combine Istio and Linkerd. The Terraform profile guards reject conflicting meshes.
+```
+kubectl port-forward -n otel-demo svc/flagd-ui 4000:4000
+```
 
-## Cilium network profile
+Enable `paymentFailure` or `cartFailure`, then watch the error surface in Dash0 without having told it what to watch. Disable the flag to show recovery.
 
-Use a fresh cluster: `action=apply`, `profile=network-cilium`, `confirm=apply:network-cilium`.
+## Inspect from the cluster
 
-Show Hubble/eBPF network and DNS visibility together with Kubernetes and application telemetry. Cilium is a cluster-creation CNI choice, so destroy this profile before returning to the AWS VPC CNI.
+1. Note `bastion_instance_id` in the run Summary.
+2. AWS Console → **Systems Manager** → **Session Manager** → **Start session**.
+3. Run:
+   - `kubectl get nodes -o wide`
+   - `kubectl get pods -A`
+   - `kubectl get pods -n otel-demo`
+   - `kubectl get dash0monitoring -A`
 
-## GitOps profile
+Worth putting on screen: `kubectl get pod -n otel-demo <pod> -o yaml` and pointing at the init container and `OTEL_*` env vars the operator added. That is the value proposition in one screen.
 
-Run `action=apply`, `profile=gitops`, `confirm=apply:gitops`.
+## Enable more technologies
 
-Show Argo CD and Flux controller health, reconciliation, and synchronization signals. Correlate a deployment/sync event with application latency or errors in the same time range.
-## Data profile
+Istio, Cilium, GitOps tools, data stores, and the Prometheus stack are all implemented in `modules/platform-addons` behind feature flags. Edit `terraform/live/env/core.tfvars` to turn them on, then run `apply` again.
 
-Run `action=apply`, `profile=data`, `confirm=apply:data`.
+Mind the conflict rules in `modules/platform-addons/guards.tf`: Istio and Linkerd cannot coexist, Cilium is a cluster-creation decision, and Envoy Gateway conflicts with kgateway. Plan first and read the counts before approving.
 
-Show PostgreSQL, MySQL, RabbitMQ, and Kafka infrastructure metrics beside client spans. Focus on database latency and message producer/consumer correlation rather than opening every product UI.
+## Teardown
 
-## Observability profile
+Run the workflow with `action` = `destroy`, `confirm` = `yes`, `delete_backend` = `false`.
 
-Run `action=apply`, `profile=observability`, `confirm=apply:observability`.
-
-This is the best migration segment. Show that Prometheus ServiceMonitor/PodMonitor resources and exporters remain useful while the Dash0 collector/target allocator scrapes their metrics. Compare Grafana, Perses, and Dash0 honestly. The workflow also applies the version-controlled **Dash0 EKS Demo Overview** dashboard through the Dash0 CLI.
-
-## Everything profile
-
-Run `action=apply`, `profile=everything`, `confirm=apply:everything` only for coexistence testing. It is expensive and too noisy for a focused recording. The profile deliberately excludes combinations that conflict.
-
-## Recording sequence
-
-1. Show the successful GitHub Summary: profile, additions/changes, state count, workload readiness, and Dash0 evidence.
-2. Open **Dash0 EKS Demo Overview** with the dataset and cluster filter active.
-3. Open Kubernetes resources and compare nodes, namespaces, workloads, pods, CPU, memory, network, and restarts.
-4. Open Services/Service Map and follow a request across services.
-5. Open a slow or failed trace and correlate it with logs and Kubernetes events.
-6. Open the selected profile integration and show one healthy signal and one failure symptom.
-7. Restore the failure and show recovery.
-
-## Automatic teardown
-
-After recording, dispatch the same workflow with:
-
-- `action=destroy`
-- the exact applied `profile`
-- `confirm=destroy:PROFILE`
-- `delete_backend=false` for another session, or `true` for final cleanup
-
-The workflow removes the managed Dash0 dashboard, drains Kubernetes LoadBalancer services and PVC-backed workloads, applies a saved destroy plan, retries partial Terraform destruction, removes only exact-owned AWS orphans, and fails unless Terraform state and all remaining AWS resource categories are zero.
-
-Capture the final GitHub Summary as teardown evidence. Full click-by-click instructions and dashboard navigation are in [deploy.md](../deploy.md).
+It removes the managed Dash0 dashboard, drains Kubernetes LoadBalancer services and PVC-backed workloads, applies a saved destroy plan, retries partial destruction, removes only exact-owned AWS orphans, and fails unless Terraform state and all remaining AWS resource categories are zero. Capture the final Summary as teardown evidence.
