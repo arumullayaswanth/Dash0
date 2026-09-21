@@ -96,20 +96,12 @@ module "eks_cluster" {
   enable_ebs_csi_driver = true
   enable_karpenter      = local.karpenter_enabled
 
-  # Lets the CI role administer the cluster without a second auth mechanism.
-  access_entries = var.ci_role_arn == null ? {} : {
-    ci = {
-      principal_arn = var.ci_role_arn
-      policy_associations = {
-        admin = {
-          policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
-          access_scope = {
-            type = "cluster"
-          }
-        }
-      }
-    }
-  }
+  # The CI role creates the cluster, so enable_cluster_creator_admin_permissions
+  # in the eks-cluster module already grants it cluster-admin via a
+  # "cluster_creator" access entry. Adding it again here produces a duplicate
+  # principal and EKS rejects it with ResourceInUseException (409). Extra
+  # entries belong here only for principals other than the CI role.
+  access_entries = {}
 
   tags = local.tags
 }

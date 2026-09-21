@@ -84,7 +84,12 @@ variable "api_allowed_cidrs" {
 }
 
 variable "ci_role_arn" {
-  description = "IAM role ARN used by GitHub Actions. Granted cluster-admin via an EKS access entry. Null to skip."
+  description = <<-EOT
+    IAM role ARN used by GitHub Actions. Informational only: because this role
+    creates the cluster, it already receives cluster-admin through the module's
+    "cluster_creator" access entry. Do not add it to access_entries as well, or
+    EKS rejects the duplicate principal with ResourceInUseException.
+  EOT
   type        = string
   default     = null
 }
