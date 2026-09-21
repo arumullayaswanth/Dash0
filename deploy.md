@@ -3,7 +3,7 @@
 Values you will reuse:
 
 - `OWNER/REPO` = `arumullayaswanth/Dash0`
-- OIDC subject = `repo:arumullayaswanth/Dash0:environment:aws-demo`
+- OIDC subject = `repo:arumullayaswanth/Dash0:*`
 - `AWS_REGION` = `us-east-1`
 - `TF_STATE_BUCKET` = `dash0-eks-tfstate-<ACCOUNT_ID>-us-east-1`
 - `TF_STATE_KEY` = `dash0-lab/demo/terraform.tfstate`
@@ -57,8 +57,10 @@ Values you will reuse:
       "Action": "sts:AssumeRoleWithWebIdentity",
       "Condition": {
         "StringEquals": {
-          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-          "token.actions.githubusercontent.com:sub": "repo:arumullayaswanth/Dash0:environment:aws-demo"
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+        },
+        "StringLike": {
+          "token.actions.githubusercontent.com:sub": "repo:arumullayaswanth/Dash0:*"
         }
       }
     }
@@ -71,15 +73,9 @@ Values you will reuse:
 
 ## 5. Configure GitHub
 
-### 5.1 Create the environment
+### 5.1 Add repository variables
 
-1. Repo → **Settings** → **Environments** → **New environment**.
-2. Name = `aws-demo` → **Configure environment**.
-3. Enable **Required reviewers** → add yourself → **Save protection rules**.
-
-### 5.2 Add environment variables
-
-Repo → **Settings** → **Environments** → **aws-demo** → **Environment variables** → **Add environment variable** for each row:
+Repo → **Settings** → **Secrets and variables** → **Actions** → **Variables** tab → **New repository variable** for each row:
 
 | Name | Value |
 |---|---|
@@ -91,9 +87,9 @@ Repo → **Settings** → **Environments** → **aws-demo** → **Environment va
 | `DASH0_API_ENDPOINT` | from Step 1.3 |
 | `DASH0_DATASET` | `demo` |
 
-### 5.3 Add the environment secret
+### 5.2 Add repository secret
 
-Same page → **Environment secrets** → **Add environment secret**:
+Same page → **Secrets** tab → **New repository secret**:
 
 | Name | Value |
 |---|---|
@@ -107,8 +103,7 @@ Same page → **Environment secrets** → **Add environment secret**:
 4. confirm = `apply:core`.
 5. delete_backend = `false`.
 6. Click **Run workflow**.
-7. Open the run → **Review deployments** → select `aws-demo` → **Approve and deploy**.
-8. Wait until **Overall result** is success.
+7. Wait until **Overall result** is success.
 
 ## 7. See results in Dash0
 
@@ -131,15 +126,12 @@ Same page → **Environment secrets** → **Add environment secret**:
 ## 9. Change profile
 
 1. **Run workflow**: action = `apply`, profile = `<name>`, confirm = `apply:<name>`, delete_backend = `false`.
-2. Approve `aws-demo`.
 
 ## 10. Destroy
 
 1. **Run workflow**: action = `destroy`, profile = the applied profile, confirm = `destroy:<profile>`, delete_backend = `false`.
-2. Approve `aws-demo`.
-3. Wait until **Overall result** is success and remaining resource counts are `0`.
+2. Wait until **Overall result** is success and remaining resource counts are `0`.
 
 ## 11. Final destroy (also delete the bucket)
 
 1. **Run workflow**: action = `destroy`, profile = the applied profile, confirm = `destroy:<profile>`, delete_backend = `true`.
-2. Approve `aws-demo`.

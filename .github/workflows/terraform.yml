@@ -67,7 +67,6 @@ env:
 jobs:
   lifecycle:
     runs-on: ubuntu-latest
-    environment: aws-demo
     timeout-minutes: 90
     steps:
       - name: Checkout
@@ -100,8 +99,8 @@ jobs:
           set -euo pipefail
           ACTION="${{ steps.context.outputs.action }}"
           PROFILE="${{ steps.context.outputs.profile }}"
-          [ -n "$TF_STATE_BUCKET" ] || { echo "TF_STATE_BUCKET is not configured in aws-demo."; exit 1; }
-          [ -n "${{ vars.AWS_ROLE_ARN }}" ] || { echo "AWS_ROLE_ARN is not configured in aws-demo."; exit 1; }
+          [ -n "$TF_STATE_BUCKET" ] || { echo "TF_STATE_BUCKET repository variable is not set."; exit 1; }
+          [ -n "${{ vars.AWS_ROLE_ARN }}" ] || { echo "AWS_ROLE_ARN repository variable is not set."; exit 1; }
           if [ "$ACTION" != plan ]; then
             EXPECTED="$ACTION:$PROFILE"
             [ "${{ inputs.confirm }}" = "$EXPECTED" ] || { echo "Confirmation must be exactly: $EXPECTED"; exit 1; }

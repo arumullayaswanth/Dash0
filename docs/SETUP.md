@@ -2,7 +2,7 @@
 
 The supported setup and operating procedure is the repository-root [deploy.md](../deploy.md).
 
-That guide covers the only manual work required once: creating the S3 state bucket in the AWS Console, creating/verifying the AWS GitHub OIDC provider and repository-restricted IAM role, creating the protected `aws-demo` GitHub environment, and entering Dash0 configuration and the token.
+That guide covers the only manual work required once: creating the S3 state bucket in the AWS Console, creating/verifying the AWS GitHub OIDC provider and repository-restricted IAM role, and adding the repository variables and Dash0 token secret.
 
 After that, use the single **Dash0 EKS lifecycle** workflow under GitHub Actions:
 
