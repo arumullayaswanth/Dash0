@@ -44,25 +44,25 @@ permissions:
   contents: read
 
 concurrency:
-  group: dash0-eks-${{ vars.TF_STATE_KEY || 'dash0-lab-demo' }}
+  group: dash0-eks-lifecycle
   cancel-in-progress: false
 
 env:
   TF_VERSION: "1.16.2"
   AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
   TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
-  TF_STATE_KEY: ${{ vars.TF_STATE_KEY || 'dash0-lab/demo/terraform.tfstate' }}
+  TF_STATE_KEY: dash0-lab/demo/terraform.tfstate
   TF_IN_AUTOMATION: "true"
   TF_INPUT: "false"
   TF_VAR_dash0_otlp_grpc_endpoint: ${{ vars.DASH0_OTLP_GRPC_ENDPOINT }}
   TF_VAR_dash0_api_endpoint: ${{ vars.DASH0_API_ENDPOINT }}
   TF_VAR_dash0_auth_token: ${{ secrets.DASH0_AUTH_TOKEN }}
-  TF_VAR_dash0_dataset: ${{ vars.DASH0_DATASET || 'default' }}
+  TF_VAR_dash0_dataset: demo
   TF_VAR_ci_role_arn: ${{ vars.AWS_ROLE_ARN }}
   TF_VAR_repository_url: ${{ github.server_url }}/${{ github.repository }}
   DASH0_API_URL: ${{ vars.DASH0_API_ENDPOINT }}
   DASH0_AUTH_TOKEN: ${{ secrets.DASH0_AUTH_TOKEN }}
-  DASH0_DATASET: ${{ vars.DASH0_DATASET || 'default' }}
+  DASH0_DATASET: demo
 
 jobs:
   lifecycle:

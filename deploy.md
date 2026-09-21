@@ -5,7 +5,7 @@ Values you will reuse:
 - `OWNER/REPO` = `arumullayaswanth/Dash0`
 - OIDC subject = `repo:arumullayaswanth/Dash0:*`
 - `AWS_REGION` = `us-east-1`
-- `TF_STATE_BUCKET` = `dash0-eks-tfstate-<ACCOUNT_ID>-us-east-1`
+- `TF_STATE_BUCKET` = `dash0demo`
 - `TF_STATE_KEY` = `dash0-lab/demo/terraform.tfstate`
 
 ## 1. Collect Dash0 values
@@ -15,13 +15,13 @@ Values you will reuse:
 3. Same page → copy **API** → save as `DASH0_API_ENDPOINT`.
 4. Open the dataset selector → pick or create `demo` → save as `DASH0_DATASET`.
 5. **Settings** → **Auth Tokens** → **Create token** → name `github-dash0-eks-demo`.
-6. Click **Copy** and keep the dialog open until Step 5.3.
+6. Click **Copy** and keep the dialog open until Step 5.2.
 
 ## 2. Create the S3 state bucket (AWS Console)
 
 1. AWS Console → set Region to `us-east-1`.
 2. **S3** → **Create bucket**.
-3. **Bucket name** = your `TF_STATE_BUCKET`.
+3. **Bucket name** = `dash0demo`.
 4. **Block all public access** = on.
 5. **Bucket Versioning** = Enable.
 6. **Default encryption** = SSE-S3.
@@ -81,7 +81,7 @@ Repo → **Settings** → **Secrets and variables** → **Actions** → **Variab
 |---|---|
 | `AWS_ROLE_ARN` | role ARN from Step 4.9 |
 | `AWS_REGION` | `us-east-1` |
-| `TF_STATE_BUCKET` | bucket name from Step 2 |
+| `TF_STATE_BUCKET` | `dash0demo` |
 | `TF_STATE_KEY` | `dash0-lab/demo/terraform.tfstate` |
 | `DASH0_OTLP_GRPC_ENDPOINT` | from Step 1.2 |
 | `DASH0_API_ENDPOINT` | from Step 1.3 |

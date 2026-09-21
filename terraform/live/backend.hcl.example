@@ -10,7 +10,7 @@
 # backend.hcl (without .example) is gitignored because the bucket name is
 # account-specific.
 
-bucket = "REPLACE-with-your-state-bucket-name"
+bucket = "dash0demo"
 key    = "dash0-lab/demo/terraform.tfstate"
 region = "us-east-1"
 
