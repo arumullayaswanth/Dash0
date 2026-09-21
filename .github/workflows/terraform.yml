@@ -102,6 +102,23 @@ jobs:
           terraform -chdir=terraform/live init -backend=false -input=false
           terraform -chdir=terraform/live validate
           echo passed > .ci/validate.status
+      # Prints only the identity claims (never the token) so the IAM trust policy
+      # can be matched exactly if role assumption fails.
+      - name: Show OIDC identity claims
+        continue-on-error: true
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import base64, json, os, urllib.request
+          url = os.environ['ACTIONS_ID_TOKEN_REQUEST_URL'] + '&audience=sts.amazonaws.com'
+          req = urllib.request.Request(url, headers={'Authorization': 'bearer ' + os.environ['ACTIONS_ID_TOKEN_REQUEST_TOKEN']})
+          token = json.load(urllib.request.urlopen(req))['value']
+          part = token.split('.')[1]
+          part += '=' * (-len(part) % 4)
+          claims = json.loads(base64.urlsafe_b64decode(part))
+          print(json.dumps({k: claims.get(k) for k in ('sub', 'aud', 'repository', 'ref')}, indent=2))
+          PY
+
       - name: Configure temporary AWS credentials
         uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c # v4
         with:
