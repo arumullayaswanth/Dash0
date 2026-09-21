@@ -131,7 +131,13 @@ jobs:
           part = token.split('.')[1]
           part += '=' * (-len(part) % 4)
           claims = json.loads(base64.urlsafe_b64decode(part))
-          print(json.dumps({k: claims.get(k) for k in ('sub', 'aud', 'repository', 'ref')}, indent=2))
+          picked = {k: claims.get(k) for k in ('sub', 'aud', 'repository', 'ref')}
+          body = json.dumps(picked, indent=2)
+          print('=== OIDC claims GitHub is sending to AWS ===')
+          print(body)
+          print('IAM trust policy sub must match:', picked.get('sub'))
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as fh:
+              fh.write('## OIDC claims\n\n```json\n' + body + '\n```\n')
           PY
 
       - name: Configure temporary AWS credentials
