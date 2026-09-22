@@ -66,6 +66,12 @@ resource "helm_release" "dash0_operator" {
   atomic          = false
   cleanup_on_fail = false
 
+  # A previous failed install leaves the release in the cluster while Terraform
+  # holds nothing in state, so a plain install fails with "cannot re-use a name
+  # that is still in use". replace lets Helm take over that existing release
+  # rather than requiring a manual `helm uninstall` between attempts.
+  replace = true
+
   values = [yamlencode({
     operator = {
       dash0Export = {
