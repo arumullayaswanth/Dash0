@@ -102,3 +102,13 @@ variable "enable_python_instrumentation" {
   type        = bool
   default     = true
 }
+
+variable "cluster_ready" {
+  description = <<-EOT
+    Opaque gate value from the eks-cluster module's cluster_ready output. Forces
+    every Kubernetes and Helm resource here to wait until EKS access entries
+    have propagated, avoiding "forbidden" errors on the first apply.
+  EOT
+  type        = string
+  default     = ""
+}

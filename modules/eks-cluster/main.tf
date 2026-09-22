@@ -230,3 +230,28 @@ module "karpenter" {
 
   tags = var.tags
 }
+
+###############################################################################
+# Access propagation gate
+#
+# EKS access entries are not effective the instant CreateAccessEntry returns;
+# the authorizer needs a few seconds to pick them up. Without this wait, the
+# first Kubernetes API call in the same apply fails with
+# "namespaces is forbidden: User ... cannot create resource".
+#
+# Downstream modules depend on the cluster_ready output rather than on the
+# cluster itself, so Kubernetes and Helm resources are only created once the
+# caller's admin access is actually usable.
+###############################################################################
+
+resource "time_sleep" "access_propagation" {
+  create_duration = "30s"
+
+  triggers = {
+    cluster_name = module.eks.cluster_name
+  }
+
+  # depends_on covers the whole module, including every access entry and policy
+  # association it creates.
+  depends_on = [module.eks]
+}

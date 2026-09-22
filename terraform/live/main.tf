@@ -139,6 +139,11 @@ module "dash0" {
 
   enable_python_instrumentation = true
 
+  # cluster_ready (not just the cluster) so the caller's EKS access entry has
+  # propagated before the first Kubernetes API call. Depending on the cluster
+  # alone races the authorizer and fails with "namespaces is forbidden".
+  cluster_ready = module.eks_cluster.cluster_ready
+
   depends_on = [module.eks_cluster]
 }
 
@@ -173,6 +178,8 @@ module "platform_addons" {
 
   storage_class          = var.storage_class
   data_store_volume_size = var.data_store_volume_size
+
+  cluster_ready = module.eks_cluster.cluster_ready
 
   tags = local.tags
 

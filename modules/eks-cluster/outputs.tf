@@ -48,3 +48,13 @@ output "karpenter" {
     queue_name            = module.karpenter[0].queue_name
   } : null
 }
+
+output "cluster_ready" {
+  description = <<-EOT
+    Gate for Kubernetes/Helm resources. Resolves only after the cluster exists
+    and its EKS access entries have had time to propagate to the authorizer.
+    Depend on this instead of cluster_name to avoid "forbidden" errors on the
+    first apply.
+  EOT
+  value       = time_sleep.access_propagation.id
+}

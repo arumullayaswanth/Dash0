@@ -215,3 +215,13 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "cluster_ready" {
+  description = <<-EOT
+    Opaque gate value from the eks-cluster module's cluster_ready output. Ensures
+    Helm releases and Kubernetes resources here are only created after EKS access
+    entries have propagated.
+  EOT
+  type        = string
+  default     = ""
+}
