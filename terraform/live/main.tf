@@ -144,7 +144,11 @@ module "dash0" {
   # alone races the authorizer and fails with "namespaces is forbidden".
   cluster_ready = module.eks_cluster.cluster_ready
 
-  depends_on = [module.eks_cluster]
+  # module.network as well as the cluster: the operator's post-install job needs
+  # outbound internet to reach the Dash0 API, which only works once the NAT
+  # gateway and its private route exist. Depending on the cluster alone lets Helm
+  # start while NAT is still provisioning, and the job exhausts its retries.
+  depends_on = [module.eks_cluster, module.network]
 }
 
 ###############################################################################

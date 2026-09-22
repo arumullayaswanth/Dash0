@@ -56,8 +56,15 @@ resource "helm_release" "dash0_operator" {
   # applied, otherwise workload instrumentation silently no-ops.
   wait          = true
   wait_for_jobs = true
-  timeout       = 600
-  atomic        = true
+  timeout       = 900
+
+  # atomic=false on purpose. With atomic=true a failed post-install job causes
+  # Helm to uninstall the release immediately, which deletes the job and its pod
+  # logs and leaves nothing to diagnose. Keeping the failed release lets you run
+  #   kubectl -n dash0-system logs job/dash0-operator-post-install
+  # to see why it failed. Re-running apply upgrades the release in place.
+  atomic          = false
+  cleanup_on_fail = false
 
   values = [yamlencode({
     operator = {

@@ -261,6 +261,29 @@ jobs:
           COUNT=$(terraform state list 2>/dev/null | sed '/^$/d' | wc -l | tr -d ' ' || true)
           echo "${COUNT:-0}" > ../../.ci/state-after.count
 
+      # A failed Helm release leaves pods and jobs behind; surface their logs so
+      # the cause is visible in this run instead of requiring cluster access.
+      - name: Diagnose failed cluster workloads
+        if: always() && steps.apply.outcome == 'failure' && steps.context.outputs.action == 'apply'
+        continue-on-error: true
+        shell: bash
+        run: |
+          aws eks update-kubeconfig --region "$AWS_REGION" --name dash0-lab-demo >/dev/null 2>&1 || exit 0
+          echo "::group::pods in dash0-system"
+          kubectl get pods -n dash0-system -o wide || true
+          echo "::endgroup::"
+          echo "::group::jobs in dash0-system"
+          kubectl get jobs -n dash0-system || true
+          echo "::endgroup::"
+          echo "::group::recent events"
+          kubectl get events -n dash0-system --sort-by=.lastTimestamp | tail -40 || true
+          echo "::endgroup::"
+          for pod in $(kubectl get pods -n dash0-system -o name 2>/dev/null); do
+            echo "::group::logs $pod"
+            kubectl logs -n dash0-system "$pod" --all-containers --tail=100 2>&1 | tail -100 || true
+            echo "::endgroup::"
+          done
+
       - name: Wait for EKS workloads
         if: steps.context.outputs.action == 'apply'
         working-directory: terraform/live
