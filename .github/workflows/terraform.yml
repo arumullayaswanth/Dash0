@@ -40,12 +40,14 @@ env:
   TF_VAR_dash0_otlp_grpc_endpoint: ${{ vars.DASH0_OTLP_GRPC_ENDPOINT }}
   TF_VAR_dash0_api_endpoint: ${{ vars.DASH0_API_ENDPOINT }}
   TF_VAR_dash0_auth_token: ${{ secrets.DASH0_AUTH_TOKEN }}
-  TF_VAR_dash0_dataset: demo
+  # Defaults to demo; set the DASH0_DATASET repository variable to override (for
+  # example to "default" if the demo dataset does not exist in your org).
+  TF_VAR_dash0_dataset: ${{ vars.DASH0_DATASET || 'demo' }}
   TF_VAR_ci_role_arn: ${{ vars.AWS_ROLE_ARN }}
   TF_VAR_repository_url: ${{ github.server_url }}/${{ github.repository }}
   DASH0_API_URL: ${{ vars.DASH0_API_ENDPOINT }}
   DASH0_AUTH_TOKEN: ${{ secrets.DASH0_AUTH_TOKEN }}
-  DASH0_DATASET: demo
+  DASH0_DATASET: ${{ vars.DASH0_DATASET || 'demo' }}
 
 jobs:
   lifecycle:
@@ -269,20 +271,25 @@ jobs:
         shell: bash
         run: |
           aws eks update-kubeconfig --region "$AWS_REGION" --name dash0-lab-demo >/dev/null 2>&1 || exit 0
-          echo "::group::pods in dash0-system"
-          kubectl get pods -n dash0-system -o wide || true
-          echo "::endgroup::"
-          echo "::group::jobs in dash0-system"
-          kubectl get jobs -n dash0-system || true
-          echo "::endgroup::"
-          echo "::group::recent events"
-          kubectl get events -n dash0-system --sort-by=.lastTimestamp | tail -40 || true
-          echo "::endgroup::"
-          for pod in $(kubectl get pods -n dash0-system -o name 2>/dev/null); do
-            echo "::group::logs $pod"
-            kubectl logs -n dash0-system "$pod" --all-containers --tail=100 2>&1 | tail -100 || true
-            echo "::endgroup::"
-          done
+
+          echo "### pods"
+          kubectl get pods -n dash0-system -o wide 2>&1 || true
+
+          echo "### jobs"
+          kubectl get jobs -n dash0-system 2>&1 || true
+
+          # This is the decisive check: the post-install hook only succeeds once
+          # the operator marks its configuration resource available, which
+          # requires the Dash0 endpoint and token to be accepted.
+          echo "### operator configuration resource"
+          kubectl get dash0operatorconfiguration -o yaml 2>&1 | tail -60 || true
+
+          echo "### events"
+          kubectl get events -n dash0-system --sort-by=.lastTimestamp 2>&1 | tail -40 || true
+
+          echo "### operator controller logs"
+          kubectl logs -n dash0-system -l app.kubernetes.io/name=dash0-operator \
+            --all-containers --tail=120 --prefix 2>&1 | tail -120 || true
 
       - name: Wait for EKS workloads
         if: steps.context.outputs.action == 'apply'
