@@ -147,3 +147,19 @@ Same page → **Secrets** tab → **New repository secret**:
 2. Wait until **Overall result** is success and remaining resource counts are `0`.
 
 The `dash0demo` S3 bucket is never deleted by the workflow. Delete it manually in the S3 console if you no longer need it.
+
+``bash
+aws eks update-kubeconfig --region us-east-1 --name dash0-lab-demo
+
+# 1. Is the operator config Available?
+kubectl get dash0operatorconfiguration -o yaml | grep -A15 "status:"
+
+# 2. Is there a collector at all?
+kubectl get daemonset,deployment -n dash0-system
+
+# 3. What is the operator complaining about?
+kubectl logs -n dash0-system -l app.kubernetes.io/name=dash0-operator --tail=60
+
+# 4. Is any namespace monitored?
+kubectl get dash0monitoring -A
+```

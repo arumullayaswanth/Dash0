@@ -113,3 +113,39 @@ module "otel_demo" {
   # Do not roll back the whole release if one service is slow to become ready.
   atomic = false
 }
+
+###############################################################################
+# Dash0 monitoring for the demo namespace
+#
+# The Dash0 operator only deploys its collector once a Dash0Monitoring resource
+# exists in a namespace. The namespace label alone (dash0.com/enable=true) is
+# not sufficient without auto-monitor actually reconciling, which proved
+# unreliable. Creating the resource here guarantees the demo namespace is
+# monitored and its ~15 services are instrumented and exported to Dash0.
+###############################################################################
+
+resource "kubernetes_manifest" "otel_demo_monitoring" {
+  count = var.demo_app ? 1 : 0
+
+  manifest = {
+    apiVersion = "operator.dash0.com/v1beta1"
+    kind       = "Dash0Monitoring"
+    metadata = {
+      name      = "dash0-monitoring-resource"
+      namespace = local.catalog.otel_demo.namespace
+    }
+    spec = {
+      instrumentWorkloads = {
+        mode = "all"
+      }
+      logCollection   = { enabled = true }
+      eventCollection = { enabled = true }
+      prometheusScraping = {
+        enabled = true
+      }
+    }
+  }
+
+  # The namespace and its workloads exist once the demo release is applied.
+  depends_on = [module.otel_demo]
+}

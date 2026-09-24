@@ -161,13 +161,16 @@ resource "helm_release" "dash0_operator" {
 ###############################################################################
 # Explicit per-namespace monitoring
 #
-# Only needed for namespaces that opted out of auto-monitoring, or when
-# auto_monitor_namespaces is false. Uses the raw manifest resource because the
-# CRD is installed by the Helm release above.
+# The operator only deploys its OpenTelemetry collector once at least one
+# Dash0Monitoring resource exists. Relying on autoMonitorNamespaces alone proved
+# unreliable (it created none, so no collector and no telemetry), so we always
+# create explicit Dash0Monitoring resources for the namespaces that matter.
+# These namespaces are also created here if missing, so the resource applies
+# even before the workload chart runs.
 ###############################################################################
 
 resource "kubernetes_manifest" "monitoring" {
-  for_each = var.auto_monitor_namespaces ? toset([]) : toset(var.monitored_namespaces)
+  for_each = toset(var.monitored_namespaces)
 
   manifest = {
     apiVersion = "operator.dash0.com/v1beta1"

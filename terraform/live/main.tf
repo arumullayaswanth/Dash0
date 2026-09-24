@@ -124,9 +124,12 @@ module "dash0" {
   auth_token         = var.dash0_auth_token
   dataset            = var.dash0_dataset
 
-  # Every namespace is monitored unless labelled dash0.com/enable=false, which
-  # the helm-addon module handles per profile.
+  # Auto-monitor is unreliable on its own (it created no monitoring resources,
+  # so the operator deployed no collector). We keep it on AND explicitly monitor
+  # known namespaces so a collector is guaranteed. "default" and "kube-system"
+  # always exist; the demo app namespace is monitored inside the demo module.
   auto_monitor_namespaces = true
+  monitored_namespaces    = ["default", "kube-system"]
 
   # created-and-updated avoids a cluster-wide pod restart the moment monitoring
   # switches on. Set to "all" if you want existing workloads instrumented
