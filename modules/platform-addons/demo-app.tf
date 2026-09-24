@@ -55,10 +55,6 @@ module "otel_demo" {
         },
       ]
 
-      # Small footprint so the whole demo fits on a two-node group.
-      resources = {
-        requests = { cpu = "40m", memory = "128Mi" }
-      }
     }
 
     components = {

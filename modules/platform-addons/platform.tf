@@ -23,6 +23,15 @@ module "cert_manager" {
       keep    = false
     }
 
+    # The startupapicheck is a post-install hook Job that calls the cert-manager
+    # API to confirm readiness. On a fresh cluster it frequently exhausts its
+    # retries before the webhook is routable and fails the release with
+    # BackoffLimitExceeded. cert-manager still becomes ready on its own, so this
+    # check is disabled; nothing here depends on it passing synchronously.
+    startupapicheck = {
+      enabled = false
+    }
+
     # cert-manager exposes Prometheus metrics; the annotations are what the Dash0
     # collector looks for when prometheusScraping is on.
     prometheus = {
