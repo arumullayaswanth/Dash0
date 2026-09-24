@@ -18,18 +18,38 @@ export DASH0_AGENT_MODE=true DASH0_COLOR=none
 kubectl wait --for=condition=Available deployment -n "$NS" \
   -l app.kubernetes.io/name=dash0-operator --timeout=300s >/dev/null
 
-DESIRED=$(kubectl get daemonset -n "$NS" -l app.kubernetes.io/name=opentelemetry-collector \
-  -o json | jq '[.items[].status.desiredNumberScheduled // 0] | add // 0')
-READY=$(kubectl get daemonset -n "$NS" -l app.kubernetes.io/name=opentelemetry-collector \
-  -o json | jq '[.items[].status.numberReady // 0] | add // 0')
-[ "$DESIRED" -gt 0 ] && [ "$READY" -eq "$DESIRED" ] || {
-  echo "Collector readiness failed: ready=$READY desired=$DESIRED" >&2
+# The operator creates its OpenTelemetry collector DaemonSet only after a
+# namespace is monitored, and its exact labels differ by operator version. So
+# discover any DaemonSet in the operator namespace rather than guessing a label,
+# and give it time to appear and roll out.
+DESIRED=0
+READY=0
+for _ in $(seq 1 30); do
+  DS_JSON=$(kubectl get daemonset -n "$NS" -o json 2>/dev/null || echo '{"items":[]}')
+  DESIRED=$(jq '[.items[].status.desiredNumberScheduled // 0] | add // 0' <<<"$DS_JSON")
+  READY=$(jq '[.items[].status.numberReady // 0] | add // 0' <<<"$DS_JSON")
+  if [ "$DESIRED" -gt 0 ] && [ "$READY" -eq "$DESIRED" ]; then
+    break
+  fi
+  sleep 10
+done
+
+if [ "$DESIRED" -eq 0 ]; then
+  echo "No collector DaemonSet found in namespace $NS. Current workloads:" >&2
+  kubectl get daemonset,deployment -n "$NS" >&2 || true
+  echo "Monitored namespaces:" >&2
+  kubectl get dash0monitoring --all-namespaces >&2 || true
+  exit 1
+fi
+[ "$READY" -eq "$DESIRED" ] || {
+  echo "Collector not fully ready: ready=$READY desired=$DESIRED" >&2
+  kubectl get pods -n "$NS" >&2 || true
   exit 1
 }
+echo "Collector ready: $READY/$DESIRED nodes."
 
-ERRORS=$(kubectl logs -n "$NS" -l app.kubernetes.io/name=opentelemetry-collector \
-  --tail=300 --all-containers 2>/dev/null | grep -Eic \
-  'permanent error|authentication|unauthenticated|401|403|connection refused|no such host' || true)
+ERRORS=$(kubectl logs -n "$NS" --tail=300 --all-containers --prefix 2>/dev/null \
+  | grep -Eic 'permanent error|unauthenticated|401|403|connection refused|no such host' || true)
 [ "$ERRORS" -eq 0 ] || { echo "Collector export/authentication errors detected." >&2; exit 1; }
 
 MONITORED=$(kubectl get dash0monitoring --all-namespaces -o json 2>/dev/null | jq '.items|length')
