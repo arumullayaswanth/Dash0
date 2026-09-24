@@ -64,7 +64,11 @@ resource "helm_release" "dash0_operator" {
   # visible instead of an opaque job failure. The hook is disabled via
   # --no-hooks-equivalent below (customResourceDefinitions still install because
   # they are not hooks).
-  wait          = false
+  # Wait for normal chart resources (especially the controller/webhook endpoint)
+  # to become Ready before creating Dash0Monitoring resources. The flaky
+  # post-install hook remains disabled below, but the Deployment itself must be
+  # ready or Kubernetes admission calls time out at mutate-monitoring.dash0.com.
+  wait          = true
   wait_for_jobs = false
   timeout       = 900
 
@@ -158,6 +162,19 @@ resource "helm_release" "dash0_operator" {
   depends_on = [kubernetes_secret_v1.dash0_auth]
 }
 
+# Helm wait confirms the pod is Ready, then this short gate lets the webhook
+# Service endpoint settle before the first admission request from a
+# Dash0Monitoring resource. This avoids context deadline exceeded on fresh EKS.
+resource "time_sleep" "webhook_propagation" {
+  create_duration = "20s"
+
+  triggers = {
+    release = helm_release.dash0_operator.id
+  }
+
+  depends_on = [helm_release.dash0_operator]
+}
+
 ###############################################################################
 # Explicit per-namespace monitoring
 #
@@ -165,8 +182,6 @@ resource "helm_release" "dash0_operator" {
 # Dash0Monitoring resource exists. Relying on autoMonitorNamespaces alone proved
 # unreliable (it created none, so no collector and no telemetry), so we always
 # create explicit Dash0Monitoring resources for the namespaces that matter.
-# These namespaces are also created here if missing, so the resource applies
-# even before the workload chart runs.
 ###############################################################################
 
 resource "kubernetes_manifest" "monitoring" {
@@ -191,5 +206,5 @@ resource "kubernetes_manifest" "monitoring" {
     }
   }
 
-  depends_on = [helm_release.dash0_operator]
+  depends_on = [time_sleep.webhook_propagation]
 }
