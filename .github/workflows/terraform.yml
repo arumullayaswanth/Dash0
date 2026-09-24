@@ -319,6 +319,7 @@ jobs:
         if: steps.context.outputs.action == 'apply'
         shell: bash
         env:
+          CLUSTER_NAME: dash0-lab-demo
           DASH0_RESULT_FILE: .ci/dash0.json
         run: |
           scripts/verify-dash0.sh
