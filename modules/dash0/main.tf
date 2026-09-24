@@ -175,6 +175,31 @@ resource "time_sleep" "webhook_propagation" {
   depends_on = [helm_release.dash0_operator]
 }
 
+
+# Demo-safe fail-open patch for only the two Dash0Monitoring admission webhooks.
+# This allows the CRs to be stored if the EKS API server cannot reach the webhook
+# endpoint; the running operator still reconciles them and deploys collectors.
+# Team-specific endpoint, region and cluster values remain inputs—not hardcoded.
+resource "terraform_data" "monitoring_webhook_fail_open" {
+  triggers_replace = [helm_release.dash0_operator.id]
+
+  provisioner "local-exec" {
+    interpreter = ["/bin/bash", "-c"]
+    command     = <<-EOT
+      set -euo pipefail
+      aws eks update-kubeconfig --region ${var.region} --name ${var.cluster_name} >/dev/null
+      kubectl patch mutatingwebhookconfiguration dash0-operator-monitoring-mutating \
+        --type=json \
+        -p='[{"op":"add","path":"/webhooks/0/failurePolicy","value":"Ignore"}]'
+      kubectl patch validatingwebhookconfiguration dash0-operator-monitoring-validator \
+        --type=json \
+        -p='[{"op":"add","path":"/webhooks/0/failurePolicy","value":"Ignore"}]'
+    EOT
+  }
+
+  depends_on = [time_sleep.webhook_propagation]
+}
+
 ###############################################################################
 # Explicit per-namespace monitoring
 #
@@ -206,5 +231,5 @@ resource "kubernetes_manifest" "monitoring" {
     }
   }
 
-  depends_on = [time_sleep.webhook_propagation]
+  depends_on = [terraform_data.monitoring_webhook_fail_open]
 }

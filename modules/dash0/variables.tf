@@ -112,3 +112,13 @@ variable "cluster_ready" {
   type        = string
   default     = ""
 }
+
+variable "region" {
+  description = "AWS region used by the demo-safe webhook patch to configure kubectl on the Terraform runner."
+  type        = string
+
+  validation {
+    condition     = length(trimspace(var.region)) > 0
+    error_message = "region must not be empty."
+  }
+}

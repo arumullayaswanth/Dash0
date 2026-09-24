@@ -118,6 +118,7 @@ module "dash0" {
   source = "../../modules/dash0"
 
   cluster_name = module.eks_cluster.cluster_name
+  region       = var.region
 
   otlp_grpc_endpoint = var.dash0_otlp_grpc_endpoint
   api_endpoint       = var.dash0_api_endpoint
