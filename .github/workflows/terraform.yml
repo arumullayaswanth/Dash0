@@ -299,6 +299,19 @@ jobs:
           CLUSTER_NAME=$(terraform output -raw cluster_name)
           echo "cluster_name=$CLUSTER_NAME" >> "$GITHUB_ENV"
           aws eks update-kubeconfig --region "$AWS_REGION" --name "$CLUSTER_NAME" >/dev/null
+
+          # The operator installs without the blocking post-install hook, so wait
+          # for its Deployment here and show why the config resource is/ isn't
+          # Available. This is where a bad token or missing dataset surfaces.
+          echo "Waiting for the Dash0 operator deployment..."
+          kubectl rollout status deployment -n dash0-system \
+            -l app.kubernetes.io/name=dash0-operator --timeout=300s || true
+          echo "### Dash0 operator configuration"
+          kubectl get dash0operatorconfiguration -o yaml 2>&1 | tail -50 || true
+          echo "### Dash0 operator logs"
+          kubectl logs -n dash0-system -l app.kubernetes.io/name=dash0-operator \
+            --all-containers --tail=80 --prefix 2>&1 | tail -80 || true
+
           ../../scripts/ci/wait-ready.sh
           echo passed > ../../.ci/readiness.status
 

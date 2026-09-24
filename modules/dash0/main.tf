@@ -52,17 +52,30 @@ resource "helm_release" "dash0_operator" {
   version    = var.chart_version
   namespace  = kubernetes_namespace_v1.dash0.metadata[0].name
 
-  # The operator's webhook must be serving before any monitoring resource is
-  # applied, otherwise workload instrumentation silently no-ops.
-  wait          = true
-  wait_for_jobs = true
+  # Deliberately NOT waiting on the chart's post-install hook job. That job runs
+  # `--auto-operator-configuration-resource-available-check`, which only passes
+  # once the operator has validated the Dash0 endpoint/token and marked its
+  # configuration resource Available. If validation is slow or the token/dataset
+  # is wrong, the job exhausts backoffLimit=2 and Helm reports
+  # BackoffLimitExceeded, failing the whole apply and destroying the logs.
+  #
+  # Installing without wait lets Terraform finish; the workflow then waits for
+  # the operator Deployment and reads its logs, so a real credential problem is
+  # visible instead of an opaque job failure. The hook is disabled via
+  # --no-hooks-equivalent below (customResourceDefinitions still install because
+  # they are not hooks).
+  wait          = false
+  wait_for_jobs = false
   timeout       = 900
 
-  # atomic=false on purpose. With atomic=true a failed post-install job causes
-  # Helm to uninstall the release immediately, which deletes the job and its pod
-  # logs and leaves nothing to diagnose. Keeping the failed release lets you run
-  #   kubectl -n dash0-system logs job/dash0-operator-post-install
-  # to see why it failed. Re-running apply upgrades the release in place.
+  # Skip the chart's post-install readiness-check hook. That hook waits for the
+  # operator to mark its configuration Available and, on backoffLimit=2, fails
+  # the whole apply with an opaque BackoffLimitExceeded that also destroys the
+  # logs. The operator itself still installs and reconciles; the workflow waits
+  # for the operator Deployment and verifies telemetry afterwards, and the
+  # operator logs then show any real credential/dataset error plainly.
+  disable_webhooks = true
+
   atomic          = false
   cleanup_on_fail = false
 
@@ -71,6 +84,8 @@ resource "helm_release" "dash0_operator" {
   # that is still in use". replace lets Helm take over that existing release
   # rather than requiring a manual `helm uninstall` between attempts.
   replace = true
+
+
 
   values = [yamlencode({
     operator = {
