@@ -94,15 +94,10 @@ resource "helm_release" "dash0_operator" {
   values = [yamlencode({
     operator = {
       dash0Export = {
-        enabled     = true
-        endpoint    = var.otlp_grpc_endpoint
-        apiEndpoint = var.api_endpoint
-        dataset     = var.dataset
-
-        secretRef = {
-          name = kubernetes_secret_v1.dash0_auth.metadata[0].name
-          key  = local.secret_key
-        }
+        # Manage the Dash0OperatorConfiguration explicitly below. The Helm
+        # auto-resource was absent in the live cluster, leaving monitoring CRs
+        # available but no export configuration and therefore no collectors.
+        enabled = false
       }
 
       # Shows up as k8s.cluster.name on every signal, which is what lets you
@@ -181,13 +176,21 @@ resource "time_sleep" "webhook_propagation" {
 # endpoint; the running operator still reconciles them and deploys collectors.
 # Team-specific endpoint, region and cluster values remain inputs—not hardcoded.
 resource "terraform_data" "monitoring_webhook_fail_open" {
-  triggers_replace = [helm_release.dash0_operator.id]
+  # v2 forces the provisioner to rerun on clusters where the earlier patch only
+  # updated the two monitoring webhooks.
+  triggers_replace = [helm_release.dash0_operator.id, "webhook-patch-v2"]
 
   provisioner "local-exec" {
     interpreter = ["/bin/bash", "-c"]
     command     = <<-EOT
       set -euo pipefail
       aws eks update-kubeconfig --region ${var.region} --name ${var.cluster_name} >/dev/null
+      kubectl patch mutatingwebhookconfiguration dash0-operator-operator-configuration-mutating \
+        --type=json \
+        -p='[{"op":"add","path":"/webhooks/0/failurePolicy","value":"Ignore"}]'
+      kubectl patch validatingwebhookconfiguration dash0-operator-operator-configuration-validator \
+        --type=json \
+        -p='[{"op":"add","path":"/webhooks/0/failurePolicy","value":"Ignore"}]'
       kubectl patch mutatingwebhookconfiguration dash0-operator-monitoring-mutating \
         --type=json \
         -p='[{"op":"add","path":"/webhooks/0/failurePolicy","value":"Ignore"}]'
@@ -198,6 +201,70 @@ resource "terraform_data" "monitoring_webhook_fail_open" {
   }
 
   depends_on = [time_sleep.webhook_propagation]
+}
+
+# Explicit cluster-level export configuration. This is the required parent
+# configuration for all namespace-level Dash0Monitoring resources; without it
+# the operator has no backend destination and does not deploy collectors.
+resource "kubernetes_manifest" "operator_configuration" {
+  manifest = {
+    apiVersion = "operator.dash0.com/v1alpha1"
+    kind       = "Dash0OperatorConfiguration"
+    metadata = {
+      name = "dash0-operator-configuration"
+    }
+    spec = {
+      exports = [
+        {
+          dash0 = {
+            endpoint = var.otlp_grpc_endpoint
+            authorization = {
+              secretRef = {
+                name = kubernetes_secret_v1.dash0_auth.metadata[0].name
+                key  = local.secret_key
+              }
+            }
+            apiEndpoint = var.api_endpoint
+            dataset     = var.dataset
+          }
+        }
+      ]
+      clusterName = var.cluster_name
+      selfMonitoring = {
+        enabled = true
+      }
+      telemetryCollection = {
+        enabled = true
+      }
+      kubernetesInfrastructureMetricsCollection = {
+        enabled = true
+      }
+      collectPodLabelsAndAnnotations = {
+        enabled = true
+      }
+      prometheusCrdSupport = {
+        enabled = var.enable_prometheus_crd_support
+      }
+      autoMonitorNamespaces = {
+        enabled       = var.auto_monitor_namespaces
+        labelSelector = "dash0.com/enable!=false"
+      }
+      monitoringTemplate = {
+        spec = {
+          instrumentWorkloads = {
+            mode = var.instrument_workloads_mode
+          }
+          logCollection               = { enabled = true }
+          eventCollection             = { enabled = true }
+          prometheusScraping          = { enabled = var.enable_prometheus_scraping }
+          synchronizePersesDashboards = true
+          synchronizePrometheusRules  = true
+        }
+      }
+    }
+  }
+
+  depends_on = [terraform_data.monitoring_webhook_fail_open]
 }
 
 ###############################################################################
@@ -231,5 +298,5 @@ resource "kubernetes_manifest" "monitoring" {
     }
   }
 
-  depends_on = [terraform_data.monitoring_webhook_fail_open]
+  depends_on = [kubernetes_manifest.operator_configuration]
 }
