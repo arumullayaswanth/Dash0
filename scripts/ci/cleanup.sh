@@ -64,10 +64,19 @@ scan() {
   KNOWN_TAGGED=$((EC2 + NAT + ELBV2 + EIP + ENI + EBS))
   OTHER_TAGGED=$((TAGGED_TOTAL > KNOWN_TAGGED ? TAGGED_TOTAL - KNOWN_TAGGED : 0))
 
+  # `total` gates teardown success and therefore counts only *billable* resource
+  # types this stack creates. other_tagged is reported for visibility but must
+  # not gate: via provider default_tags, every non-billable resource (VPC,
+  # subnets, route tables, security groups, IAM roles, log groups, EKS addons)
+  # also carries Project/Environment tags, and the Resource Groups Tagging API
+  # lags for minutes-to-hours after deletion. Those never reach zero on their
+  # own, so including them makes a clean destroy loop forever and then fail.
+  # Terraform state emptiness (checked in the workflow) is the source of truth
+  # for whether the stack is gone; this scan guards against orphaned billing.
   jq -nc --argjson eks "$EKS" --argjson ec2 "$EC2" --argjson nat "$NAT" \
     --argjson elbv2 "$ELBV2" --argjson classic "$CLASSIC" --argjson eip "$EIP" \
     --argjson eni "$ENI" --argjson ebs "$EBS" --argjson other "$OTHER_TAGGED" \
-    '{eks:$eks,ec2:$ec2,nat:$nat,elbv2:$elbv2,classic_elb:$classic,eip:$eip,eni:$eni,ebs:$ebs,other_tagged:$other,total:($eks+$ec2+$nat+$elbv2+$classic+$eip+$eni+$ebs+$other)}' > "$OUT"
+    '{eks:$eks,ec2:$ec2,nat:$nat,elbv2:$elbv2,classic_elb:$classic,eip:$eip,eni:$eni,ebs:$ebs,other_tagged:$other,total:($eks+$ec2+$nat+$elbv2+$classic+$eip+$eni+$ebs)}' > "$OUT"
   cat "$OUT"
 }
 drain_cluster() {
