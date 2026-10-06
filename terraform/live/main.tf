@@ -125,12 +125,14 @@ module "dash0" {
   auth_token         = var.dash0_auth_token
   dataset            = var.dash0_dataset
 
-  # Auto-monitor is unreliable on its own (it created no monitoring resources,
-  # so the operator deployed no collector). We keep it on AND explicitly monitor
-  # known namespaces so a collector is guaranteed. "default" and "kube-system"
-  # always exist; the demo app namespace is monitored inside the demo module.
+  # Auto-monitoring (configured on the Dash0OperatorConfiguration) manages every
+  # namespace labelled dash0.com/enable!=false, including default and the demo
+  # app namespace, and correctly leaves system namespaces alone. Creating
+  # explicit Dash0Monitoring resources on top of that is rejected by the
+  # operator's webhook ("namespace is automatically managed"), so we rely on
+  # auto-monitoring alone and keep the explicit list empty.
   auto_monitor_namespaces = true
-  monitored_namespaces    = ["default", "kube-system"]
+  monitored_namespaces    = []
 
   # created-and-updated avoids a cluster-wide pod restart the moment monitoring
   # switches on. Set to "all" if you want existing workloads instrumented

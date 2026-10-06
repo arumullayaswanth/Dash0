@@ -104,45 +104,11 @@ module "otel_demo" {
 
 ###############################################################################
 # Dash0 monitoring for the demo namespace
+#
+# No explicit Dash0Monitoring resource is created here. The otel-demo namespace
+# is labelled dash0.com/enable=true (monitored = true above), so the Dash0
+# operator's auto-monitoring (enabled on the Dash0OperatorConfiguration) manages
+# it automatically. Adding an explicit resource on top is rejected by the
+# operator webhook ("namespace is automatically managed"). The demo workloads
+# are deployed fresh, so created-and-updated instrumentation covers them.
 ###############################################################################
-
-
-resource "terraform_data" "otel_demo_monitoring" {
-  count = var.demo_app ? 1 : 0
-
-  triggers_replace = [local.otel_demo_monitoring_manifest]
-
-  provisioner "local-exec" {
-    interpreter = ["/bin/bash", "-c"]
-    environment = {
-      DASH0_MANIFEST = local.otel_demo_monitoring_manifest
-    }
-    command = <<-EOT
-      set -euo pipefail
-      aws eks update-kubeconfig --region ${var.region} --name ${var.cluster_name} >/dev/null
-      kubectl wait --for=condition=Established --timeout=120s \
-        crd/dash0monitorings.operator.dash0.com
-      printf '%s' "$DASH0_MANIFEST" | kubectl apply -f -
-    EOT
-  }
-
-  # The namespace and its workloads exist once the demo release is applied.
-  depends_on = [module.otel_demo]
-}
-
-locals {
-  otel_demo_monitoring_manifest = yamlencode({
-    apiVersion = "operator.dash0.com/v1beta1"
-    kind       = "Dash0Monitoring"
-    metadata = {
-      name      = "dash0-monitoring-resource"
-      namespace = local.catalog.otel_demo.namespace
-    }
-    spec = {
-      instrumentWorkloads = { mode = "all" }
-      logCollection       = { enabled = true }
-      eventCollection     = { enabled = true }
-      prometheusScraping  = { enabled = true }
-    }
-  })
-}
