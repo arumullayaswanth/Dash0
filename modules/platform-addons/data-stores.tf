@@ -101,24 +101,14 @@ module "mysql" {
   chart_version = local.catalog.mysql.version
   namespace     = local.catalog.mysql.namespace
 
-  values = {
-    # Replication gives one primary plus secondaries, so MySQL runs as a
-    # multi-pod StatefulSet (mysql-primary-0, mysql-secondary-0..N) that shows
-    # up clearly in Dash0's StatefulSets view.
-    architecture = "replication"
+  wait    = false
+  atomic  = false
+  timeout = 1200
 
-    secondary = {
-      replicaCount = 2
-      persistence = {
-        enabled      = true
-        size         = local.storage.size
-        storageClass = local.storage.class
-      }
-      resources = {
-        requests = { cpu = "100m", memory = "256Mi" }
-        limits   = { memory = "1Gi" }
-      }
-    }
+  values = {
+    # Standalone: one StatefulSet pod (mysql-0) backed by an EBS volume. Shows
+    # up in Dash0's StatefulSets view and binds fast on a small cluster.
+    architecture = "standalone"
 
     auth = {
       # Chart generates a random root password into a Secret. Nothing sensitive
@@ -171,10 +161,16 @@ module "rabbitmq" {
   chart_version = local.catalog.rabbitmq.version
   namespace     = local.catalog.rabbitmq.namespace
 
+  # Install without blocking on cluster-formation readiness and without atomic
+  # rollback; a slow-settling pod should not fail the whole apply. The single
+  # StatefulSet pod still shows up in Dash0.
+  wait    = false
+  atomic  = false
+  timeout = 1200
+
   values = {
-    # Three-node cluster, so RabbitMQ runs as a 3-pod StatefulSet
-    # (rabbitmq-0..2) visible in Dash0's StatefulSets view.
-    replicaCount = 3
+    # One StatefulSet pod (rabbitmq-0) backed by an EBS volume.
+    replicaCount = 1
 
     persistence = {
       enabled      = true
