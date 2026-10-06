@@ -12,3 +12,8 @@ output "connect_hint" {
   description = "How to open a shell on the bastion."
   value       = "AWS Console -> Systems Manager -> Session Manager -> Start session -> ${aws_instance.bastion.id}"
 }
+
+output "security_group_id" {
+  description = "Bastion security group ID. The root stack allows this SG into the EKS cluster security group on 443 so kubectl can reach the private API endpoint."
+  value       = aws_security_group.bastion.id
+}

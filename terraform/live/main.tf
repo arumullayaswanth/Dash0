@@ -249,3 +249,16 @@ resource "aws_eks_access_policy_association" "bastion" {
 
   depends_on = [aws_eks_access_entry.bastion]
 }
+
+resource "aws_vpc_security_group_ingress_rule" "bastion_to_api" {
+  count = var.enable_bastion ? 1 : 0
+
+  security_group_id            = module.eks_cluster.cluster_security_group_id
+  referenced_security_group_id = module.bastion[0].security_group_id
+  description                  = "Bastion to Kubernetes API server"
+  from_port                    = 443
+  to_port                      = 443
+  ip_protocol                  = "tcp"
+
+  tags = merge(local.tags, { Name = "${local.name}-bastion-to-api" })
+}
