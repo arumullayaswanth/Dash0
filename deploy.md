@@ -141,6 +141,29 @@ Same page → **Secrets** tab → **New repository secret**:
    - `kubectl get pods -A`
    - `kubectl get pods -n otel-demo`
 
+## 8.5 Browse the demo app and inject failures
+
+The demo already runs a built-in load generator, so traffic flows into Dash0
+without any action. To click through the storefront yourself and trigger errors
+on demand, open it locally with a port-forward (also printed as the
+`demo_app_access` output after apply):
+
+```bash
+aws eks update-kubeconfig --region us-east-1 --name dash0-lab-demo
+kubectl -n otel-demo port-forward svc/frontend-proxy 8080:8080
+```
+
+Then in a browser:
+
+- `http://localhost:8080` — storefront. Browse products, add to cart, check out
+  to generate traces, metrics, and logs.
+- `http://localhost:8080/feature` — flag UI. Toggle a failure flag such as
+  `adServiceFailure`, `cartServiceFailure`, or `productCatalogFailure`. Within a
+  minute the resulting errors appear in Dash0 under Traces and Logs.
+
+Leave the `port-forward` command running while you browse; press `Ctrl+C` to
+stop it.
+
 ## 9. Destroy
 
 1. **Run workflow**: action = `destroy`, confirm = `yes`.

@@ -63,6 +63,14 @@ output "verify_commands" {
   ]
 }
 
+output "demo_app_access" {
+  description = "Open the OpenTelemetry demo storefront locally, then browse to http://localhost:8080 to generate traffic and http://localhost:8080/feature to inject failures. Run the commands in order."
+  value = [
+    "aws eks update-kubeconfig --region ${var.region} --name ${module.eks_cluster.cluster_name}",
+    "kubectl -n otel-demo port-forward svc/frontend-proxy 8080:8080",
+  ]
+}
+
 output "bastion_instance_id" {
   description = "Bastion EC2 instance ID, or null when disabled. Connect via Console -> EC2 -> Connect -> Session Manager."
   value       = var.enable_bastion ? module.bastion[0].instance_id : null
