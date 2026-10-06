@@ -64,5 +64,14 @@ output "load_balancer_services" {
     var.ingress.emissary ? "${local.catalog.emissary.namespace}/emissary-ingress" : "",
     var.ingress.haproxy ? "${local.catalog.haproxy.namespace}/haproxy-ingress" : "",
     var.mesh.istio ? "${local.catalog.istio_gateway.namespace}/istio-ingressgateway" : "",
+    var.demo_app && var.expose_demo_frontend ? "${local.catalog.otel_demo.namespace}/frontend-proxy" : "",
   ])
+}
+
+output "demo_frontend_url" {
+  description = "Public URL of the OpenTelemetry demo storefront when expose_demo_frontend is on, otherwise null. The load balancer may take a minute to get a hostname after apply."
+  value = try(
+    "http://${data.kubernetes_service_v1.demo_frontend[0].status[0].load_balancer[0].ingress[0].hostname}:8080",
+    null
+  )
 }

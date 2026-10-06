@@ -71,6 +71,11 @@ output "demo_app_access" {
   ]
 }
 
+output "demo_frontend_url" {
+  description = "Public URL of the OpenTelemetry demo storefront when expose_demo_frontend is on. Browse here directly; append /feature to inject failures. Null when the frontend is not exposed."
+  value       = module.platform_addons.demo_frontend_url
+}
+
 output "bastion_instance_id" {
   description = "Bastion EC2 instance ID, or null when disabled. Connect via Console -> EC2 -> Connect -> Session Manager."
   value       = var.enable_bastion ? module.bastion[0].instance_id : null

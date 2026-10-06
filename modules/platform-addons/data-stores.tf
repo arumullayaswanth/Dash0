@@ -102,7 +102,23 @@ module "mysql" {
   namespace     = local.catalog.mysql.namespace
 
   values = {
-    architecture = "standalone"
+    # Replication gives one primary plus secondaries, so MySQL runs as a
+    # multi-pod StatefulSet (mysql-primary-0, mysql-secondary-0..N) that shows
+    # up clearly in Dash0's StatefulSets view.
+    architecture = "replication"
+
+    secondary = {
+      replicaCount = 2
+      persistence = {
+        enabled      = true
+        size         = local.storage.size
+        storageClass = local.storage.class
+      }
+      resources = {
+        requests = { cpu = "100m", memory = "256Mi" }
+        limits   = { memory = "1Gi" }
+      }
+    }
 
     auth = {
       # Chart generates a random root password into a Secret. Nothing sensitive
@@ -156,7 +172,9 @@ module "rabbitmq" {
   namespace     = local.catalog.rabbitmq.namespace
 
   values = {
-    replicaCount = 1
+    # Three-node cluster, so RabbitMQ runs as a 3-pod StatefulSet
+    # (rabbitmq-0..2) visible in Dash0's StatefulSets view.
+    replicaCount = 3
 
     persistence = {
       enabled      = true

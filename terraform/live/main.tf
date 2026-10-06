@@ -184,7 +184,8 @@ module "platform_addons" {
   keep_prometheus_server  = var.keep_prometheus_server
   atlantis_repo_allowlist = var.atlantis_repo_allowlist
 
-  demo_app = var.enable_demo_app
+  demo_app             = var.enable_demo_app
+  expose_demo_frontend = var.expose_demo_frontend
 
   storage_class          = var.storage_class
   data_store_volume_size = var.data_store_volume_size

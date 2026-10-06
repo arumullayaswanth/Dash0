@@ -171,6 +171,18 @@ variable "demo_app" {
   default     = true
 }
 
+variable "expose_demo_frontend" {
+  description = <<-EOT
+    Expose the OpenTelemetry demo frontend-proxy through a public AWS load
+    balancer so the storefront is reachable in a browser without port-forward.
+    Off by default: it creates an internet-facing endpoint and bills hourly.
+    Uses a plain type=LoadBalancer service (in-tree AWS provider, Classic ELB),
+    so it needs no AWS Load Balancer Controller.
+  EOT
+  type        = bool
+  default     = false
+}
+
 variable "otel_demo_chart_version" {
   description = "opentelemetry-demo chart version."
   type        = string

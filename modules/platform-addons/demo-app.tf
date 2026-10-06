@@ -64,6 +64,17 @@ module "otel_demo" {
       flagd = {
         enabled = true
       }
+
+      # When expose_demo_frontend is on, publish the storefront through a public
+      # LoadBalancer so it is reachable in a browser. A plain type=LoadBalancer
+      # (no annotations) uses the in-tree AWS provider and provisions a public
+      # Classic ELB with no AWS Load Balancer Controller required. When off, the
+      # chart default (ClusterIP) is kept and access is via port-forward.
+      "frontend-proxy" = var.expose_demo_frontend ? {
+        service = {
+          type = "LoadBalancer"
+        }
+      } : {}
     }
 
     # eBPF profiling is off by default and would need its own collector.
@@ -100,6 +111,19 @@ module "otel_demo" {
   timeout = 1200
   # Do not roll back the whole release if one service is slow to become ready.
   atomic = false
+}
+
+# Read the public load balancer hostname assigned to the frontend-proxy service
+# so it can be surfaced as an output. Only read when the service is exposed.
+data "kubernetes_service_v1" "demo_frontend" {
+  count = var.demo_app && var.expose_demo_frontend ? 1 : 0
+
+  metadata {
+    name      = "frontend-proxy"
+    namespace = local.catalog.otel_demo.namespace
+  }
+
+  depends_on = [module.otel_demo]
 }
 
 ###############################################################################

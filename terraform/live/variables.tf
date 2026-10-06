@@ -299,6 +299,12 @@ variable "enable_demo_app" {
   default     = true
 }
 
+variable "expose_demo_frontend" {
+  description = "Expose the OpenTelemetry demo storefront on a public AWS load balancer so it is reachable in a browser. Off by default; creates an internet-facing endpoint that bills hourly."
+  type        = bool
+  default     = false
+}
+
 ###############################################################################
 # Bastion
 ###############################################################################

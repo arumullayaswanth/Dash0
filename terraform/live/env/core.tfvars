@@ -23,8 +23,10 @@ kubernetes_version = "1.34"
 
 system_node_instance_types = ["m6i.large"]
 system_node_min            = 2
-system_node_desired        = 2
-system_node_max            = 4
+# 3 nodes: the OTel demo plus the MySQL and RabbitMQ StatefulSets need more room
+# than two m6i.large nodes comfortably hold.
+system_node_desired = 3
+system_node_max     = 4
 
 # Karpenter is off here. Turn it on once you enable heavier profiles rather than
 # guessing a bigger node count.
@@ -38,6 +40,21 @@ profile_platform = {
 
 # The demo app is the traffic source. Without it Dash0 shows an idle cluster.
 enable_demo_app = true
+
+# StatefulSet workloads so Dash0's Kubernetes views show StatefulSets and their
+# pods (mysql-0, rabbitmq-0), each backed by an EBS PersistentVolume. MySQL and
+# RabbitMQ are plain Helm charts (no operator CRDs), so they add StatefulSets
+# without the plan-time CRD dependency that Postgres/Kafka/ClickHouse carry.
+profile_data_stores = {
+  mysql    = true
+  rabbitmq = true
+}
+
+# Publish the demo storefront on a public AWS load balancer so it is reachable
+# in a browser (printed as the demo_frontend_url output). This creates an
+# internet-facing endpoint that bills hourly; set to false to keep it private
+# and use the port-forward path instead.
+expose_demo_frontend = true
 
 # Dash0 endpoints and token come from terraform.tfvars or TF_VAR_* env vars.
 # See docs/SETUP.md.
