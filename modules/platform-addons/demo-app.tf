@@ -1,17 +1,5 @@
 ###############################################################################
 # OpenTelemetry Demo
-#
-# The traffic source. Without a workload generating spans, Dash0 shows an empty
-# cluster and the demo falls flat.
-#
-# The chart normally bundles its own Collector, Jaeger, Prometheus, Grafana and
-# OpenSearch. We turn all of that off and point the services straight at the
-# Dash0 operator's collector. That is the whole point: one OTLP endpoint, no
-# backend sprawl.
-#
-# The bundled load generator drives continuous traffic, and the feature flag
-# service can inject failures on demand, which is the cleanest way to show error
-# detection in Dash0 on camera.
 ###############################################################################
 
 module "otel_demo" {
@@ -116,18 +104,34 @@ module "otel_demo" {
 
 ###############################################################################
 # Dash0 monitoring for the demo namespace
-#
-# The Dash0 operator only deploys its collector once a Dash0Monitoring resource
-# exists in a namespace. The namespace label alone (dash0.com/enable=true) is
-# not sufficient without auto-monitor actually reconciling, which proved
-# unreliable. Creating the resource here guarantees the demo namespace is
-# monitored and its ~15 services are instrumented and exported to Dash0.
 ###############################################################################
 
-resource "kubernetes_manifest" "otel_demo_monitoring" {
+
+resource "terraform_data" "otel_demo_monitoring" {
   count = var.demo_app ? 1 : 0
 
-  manifest = {
+  triggers_replace = [local.otel_demo_monitoring_manifest]
+
+  provisioner "local-exec" {
+    interpreter = ["/bin/bash", "-c"]
+    environment = {
+      DASH0_MANIFEST = local.otel_demo_monitoring_manifest
+    }
+    command = <<-EOT
+      set -euo pipefail
+      aws eks update-kubeconfig --region ${var.region} --name ${var.cluster_name} >/dev/null
+      kubectl wait --for=condition=Established --timeout=120s \
+        crd/dash0monitorings.operator.dash0.com
+      printf '%s' "$DASH0_MANIFEST" | kubectl apply -f -
+    EOT
+  }
+
+  # The namespace and its workloads exist once the demo release is applied.
+  depends_on = [module.otel_demo]
+}
+
+locals {
+  otel_demo_monitoring_manifest = yamlencode({
     apiVersion = "operator.dash0.com/v1beta1"
     kind       = "Dash0Monitoring"
     metadata = {
@@ -135,17 +139,10 @@ resource "kubernetes_manifest" "otel_demo_monitoring" {
       namespace = local.catalog.otel_demo.namespace
     }
     spec = {
-      instrumentWorkloads = {
-        mode = "all"
-      }
-      logCollection   = { enabled = true }
-      eventCollection = { enabled = true }
-      prometheusScraping = {
-        enabled = true
-      }
+      instrumentWorkloads = { mode = "all" }
+      logCollection       = { enabled = true }
+      eventCollection     = { enabled = true }
+      prometheusScraping  = { enabled = true }
     }
-  }
-
-  # The namespace and its workloads exist once the demo release is applied.
-  depends_on = [module.otel_demo]
+  })
 }

@@ -203,11 +203,16 @@ resource "terraform_data" "monitoring_webhook_fail_open" {
   depends_on = [time_sleep.webhook_propagation]
 }
 
-# Explicit cluster-level export configuration. This is the required parent
-# configuration for all namespace-level Dash0Monitoring resources; without it
-# the operator has no backend destination and does not deploy collectors.
-resource "kubernetes_manifest" "operator_configuration" {
-  manifest = {
+# Custom resources (Dash0OperatorConfiguration, Dash0Monitoring) are applied
+# with kubectl at apply time rather than via kubernetes_manifest. The
+# hashicorp/kubernetes kubernetes_manifest resource contacts the cluster during
+# PLAN to validate the manifest against the live CRD. On a from-scratch apply
+# the EKS cluster and the operator's CRDs do not exist at plan time, so planning
+# fails with "no client config"/"failed to determine GVR". A client-side apply
+# in a provisioner runs only after the operator (and its CRDs) are installed, so
+# it works for both fresh and incremental applies. All values remain inputs.
+locals {
+  operator_configuration_manifest = yamlencode({
     apiVersion = "operator.dash0.com/v1alpha1"
     kind       = "Dash0OperatorConfiguration"
     metadata = {
@@ -229,31 +234,19 @@ resource "kubernetes_manifest" "operator_configuration" {
           }
         }
       ]
-      clusterName = var.cluster_name
-      selfMonitoring = {
-        enabled = true
-      }
-      telemetryCollection = {
-        enabled = true
-      }
-      kubernetesInfrastructureMetricsCollection = {
-        enabled = true
-      }
-      collectPodLabelsAndAnnotations = {
-        enabled = true
-      }
-      prometheusCrdSupport = {
-        enabled = var.enable_prometheus_crd_support
-      }
+      clusterName                               = var.cluster_name
+      selfMonitoring                            = { enabled = true }
+      telemetryCollection                       = { enabled = true }
+      kubernetesInfrastructureMetricsCollection = { enabled = true }
+      collectPodLabelsAndAnnotations            = { enabled = true }
+      prometheusCrdSupport                      = { enabled = var.enable_prometheus_crd_support }
       autoMonitorNamespaces = {
         enabled       = var.auto_monitor_namespaces
         labelSelector = "dash0.com/enable!=false"
       }
       monitoringTemplate = {
         spec = {
-          instrumentWorkloads = {
-            mode = var.instrument_workloads_mode
-          }
+          instrumentWorkloads         = { mode = var.instrument_workloads_mode }
           logCollection               = { enabled = true }
           eventCollection             = { enabled = true }
           prometheusScraping          = { enabled = var.enable_prometheus_scraping }
@@ -262,6 +255,48 @@ resource "kubernetes_manifest" "operator_configuration" {
         }
       }
     }
+  })
+
+  monitoring_manifests = {
+    for ns in var.monitored_namespaces : ns => yamlencode({
+      apiVersion = "operator.dash0.com/v1beta1"
+      kind       = "Dash0Monitoring"
+      metadata = {
+        name      = "dash0-monitoring-resource"
+        namespace = ns
+      }
+      spec = {
+        instrumentWorkloads = { mode = var.instrument_workloads_mode }
+        logCollection       = { enabled = true }
+        eventCollection     = { enabled = true }
+        prometheusScraping  = { enabled = var.enable_prometheus_scraping }
+      }
+    })
+  }
+}
+
+# Explicit cluster-level export configuration. This is the required parent
+# configuration for all namespace-level Dash0Monitoring resources; without it
+# the operator has no backend destination and does not deploy collectors.
+resource "terraform_data" "operator_configuration" {
+  # Re-apply whenever the rendered manifest or the operator release changes.
+  triggers_replace = [
+    helm_release.dash0_operator.id,
+    local.operator_configuration_manifest,
+  ]
+
+  provisioner "local-exec" {
+    interpreter = ["/bin/bash", "-c"]
+    environment = {
+      DASH0_MANIFEST = local.operator_configuration_manifest
+    }
+    command = <<-EOT
+      set -euo pipefail
+      aws eks update-kubeconfig --region ${var.region} --name ${var.cluster_name} >/dev/null
+      kubectl wait --for=condition=Established --timeout=120s \
+        crd/dash0operatorconfigurations.operator.dash0.com
+      printf '%s' "$DASH0_MANIFEST" | kubectl apply -f -
+    EOT
   }
 
   depends_on = [terraform_data.monitoring_webhook_fail_open]
@@ -276,27 +311,27 @@ resource "kubernetes_manifest" "operator_configuration" {
 # create explicit Dash0Monitoring resources for the namespaces that matter.
 ###############################################################################
 
-resource "kubernetes_manifest" "monitoring" {
-  for_each = toset(var.monitored_namespaces)
+resource "terraform_data" "monitoring" {
+  for_each = local.monitoring_manifests
 
-  manifest = {
-    apiVersion = "operator.dash0.com/v1beta1"
-    kind       = "Dash0Monitoring"
-    metadata = {
-      name      = "dash0-monitoring-resource"
-      namespace = each.value
+  triggers_replace = [
+    terraform_data.operator_configuration.id,
+    each.value,
+  ]
+
+  provisioner "local-exec" {
+    interpreter = ["/bin/bash", "-c"]
+    environment = {
+      DASH0_MANIFEST = each.value
     }
-    spec = {
-      instrumentWorkloads = {
-        mode = var.instrument_workloads_mode
-      }
-      logCollection   = { enabled = true }
-      eventCollection = { enabled = true }
-      prometheusScraping = {
-        enabled = var.enable_prometheus_scraping
-      }
-    }
+    command = <<-EOT
+      set -euo pipefail
+      aws eks update-kubeconfig --region ${var.region} --name ${var.cluster_name} >/dev/null
+      kubectl wait --for=condition=Established --timeout=120s \
+        crd/dash0monitorings.operator.dash0.com
+      printf '%s' "$DASH0_MANIFEST" | kubectl apply -f -
+    EOT
   }
 
-  depends_on = [kubernetes_manifest.operator_configuration]
+  depends_on = [terraform_data.operator_configuration]
 }
