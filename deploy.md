@@ -10,14 +10,23 @@ Values you will reuse:
 
 ## 1. Collect Dash0 values
 
-1. Sign in to <https://app.dash0.com>.
-2. **Settings** → **Endpoints** → find the **OTLP/gRPC** row → copy it → save as `DASH0_OTLP_GRPC_ENDPOINT`.
+1.1 Sign in to <https://app.dash0.com>.
+
+1.2 **Settings** → **Endpoints** → find the **OTLP/gRPC** row → copy it → save as `DASH0_OTLP_GRPC_ENDPOINT`.
    - Must look like `ingress.us-west-2.aws.dash0.com:4317`.
    - No `https://`, no URL path. Do not use the OTLP/HTTP row.
-3. Same page → copy **API** → save as `DASH0_API_ENDPOINT`.
+
+1.3 Same page → copy **API** → save as `DASH0_API_ENDPOINT`.
    - Must look like `https://api.us-west-2.aws.dash0.com`.
-4. **Settings** → **Auth Tokens** → **Create token** → name `github-dash0-eks-demo`.
-5. Click **Copy** and keep the dialog open until Step 5.2.
+
+1.4 **Settings** → **Auth Tokens** → **Create token** → name `github-dash0-eks-demo`.
+
+1.5 Click **Copy** and keep the dialog open until Step 5.2.
+
+1.6 **Settings** → **Datasets** → **Create dataset** → name it `demo`. This is where all telemetry from the cluster lands, and it must exist before you apply or Dash0 drops the data.
+   - The workflow uses `demo` by default (baked into the workflow env).
+   - If you prefer the built-in `default` dataset instead of creating one, skip creating `demo` and set the `DASH0_DATASET` repository variable to `default` in Step 5.1.
+   - To use any other name, create that dataset here and set `DASH0_DATASET` to match in Step 5.1.
 
 ## 2. Create the S3 state bucket (AWS Console)
 
@@ -40,7 +49,7 @@ Values you will reuse:
 7. Click **Add provider**.
 8. Confirm `token.actions.githubusercontent.com` now appears in the list.
 
-This provider must exist. Without it the trust policy in Step 4 still saves, but every run fails with `Not authorized to perform sts:AssumeRoleWithWebIdentity`.
+> This provider must exist. Without it the trust policy in Step 4 still saves, but every run fails with `Not authorized to perform sts:AssumeRoleWithWebIdentity`.
 
 ## 4. Create the AWS role
 
@@ -76,11 +85,13 @@ This provider must exist. Without it the trust policy in Step 4 still saves, but
 }
 ```
 
-8. Click **Update policy**.
-9. Reopen the **Trust relationships** tab and confirm the JSON shown matches what you pasted. If it does not, the save did not apply.
-10. Copy the role **ARN** from the role summary → save as `AWS_ROLE_ARN`. It should read `arn:aws:iam::713939171080:role/github-dash0-eks-demo`.
+4.8 Click **Update policy**.
 
-Checklist if a run fails with `Not authorized to perform sts:AssumeRoleWithWebIdentity`:
+4.9 Reopen the **Trust relationships** tab and confirm the JSON shown matches what you pasted. If it does not, the save did not apply.
+
+4.10 Copy the role **ARN** from the role summary → save as `AWS_ROLE_ARN`. It should read `arn:aws:iam::713939171080:role/github-dash0-eks-demo`.
+
+**Checklist** if a run fails with `Not authorized to perform sts:AssumeRoleWithWebIdentity`:
 
 | Check | Where | Must be |
 |---|---|---|
@@ -95,7 +106,9 @@ Checklist if a run fails with `Not authorized to perform sts:AssumeRoleWithWebId
 
 ### 5.1 Add repository variables
 
-Repo → **Settings** → **Secrets and variables** → **Actions** → **Variables** tab → **New repository variable** for each row:
+5.1.1 Repo → **Settings** → **Secrets and variables** → **Actions** → **Variables** tab.
+
+5.1.2 Click **New repository variable** for each row:
 
 | Name | Value |
 |---|---|
@@ -104,8 +117,8 @@ Repo → **Settings** → **Secrets and variables** → **Actions** → **Variab
 | `TF_STATE_BUCKET` | `dash0demo` |
 | `DASH0_OTLP_GRPC_ENDPOINT` | from Step 1.2, e.g. `ingress.us-west-2.aws.dash0.com:4317` |
 | `DASH0_API_ENDPOINT` | from Step 1.3, e.g. `https://api.us-west-2.aws.dash0.com` |
+| `DASH0_DATASET` | the dataset from Step 1.6, e.g. `demo` |
 
-`TF_STATE_KEY` and `DASH0_DATASET` are hardcoded in the workflow; do not add them.
 
 ### 5.2 Add repository secret
 
@@ -133,13 +146,174 @@ Same page → **Secrets** tab → **New repository secret**:
 
 ## 8. See results from the cluster (bastion)
 
-1. In the run **Summary**, note `bastion_instance_id`.
-2. AWS Console → **Systems Manager** → **Session Manager** → **Start session**.
-3. Select the matching instance → **Start session**.
-4. Run:
+8.1 In the run **Summary**, note `bastion_instance_id`.
+
+8.2 AWS Console → **Systems Manager** → **Session Manager** → **Start session**.
+
+8.3 Select the matching instance → **Start session**.
+
+8.4 Run:
+   - `aws eks update-kubeconfig --region us-east-1 --name dash0-lab-demo`
    - `kubectl get nodes -o wide`
    - `kubectl get pods -A`
    - `kubectl get pods -n otel-demo`
+   - `kubectl get statefulsets -A`
+
+## 9. Browse the demo app and inject failures
+
+The demo runs a built-in load generator, so traffic flows into Dash0
+automatically. To browse the storefront and trigger errors on demand:
+
+**Option A — public URL (if `expose_demo_frontend = true`):**
+
+9.1 After apply, find `demo_frontend_url` in the Terraform outputs.
+
+9.2 Open that URL in a browser — the demo storefront.
+
+9.3 Browse products, add to cart, check out to generate traces, metrics, and logs.
+
+9.4 Append `/feature` to the URL — flag UI. Toggle a failure flag such as
+`adServiceFailure`, `cartServiceFailure`, or `productCatalogFailure`. Within a
+minute the resulting errors appear in Dash0 under Traces and Logs.
+
+**Option B — port-forward (private cluster):**
+
+9.5 Run these commands (also printed as the `demo_app_access` output):
+
+```bash
+aws eks update-kubeconfig --region us-east-1 --name dash0-lab-demo
+kubectl -n otel-demo port-forward svc/frontend-proxy 8080:8080
+```
+
+9.6 Open `http://localhost:8080` in a browser.
+
+9.7 Open `http://localhost:8080/feature` to inject failures.
+
+9.8 Press `Ctrl+C` to stop the port-forward.
+
+## 10. Destroy
+
+10.1 **Run workflow**: action = `destroy`, confirm = `yes`.
+
+10.2 Wait until **Overall result** is success and remaining resource counts are `0`.
+on demand, open it locally with a port-forward (also printed as the
+> The `dash0demo` S3 bucket is never deleted by the workflow. Delete it manually in the S3 console if you no longer need it.
+
+## 11. Troubleshooting
+
+```bash
+aws eks update-kubeconfig --region us-east-1 --name dash0-lab-demo
+kubectl -n otel-demo port-forward svc/frontend-proxy 8080:8080
+# 11.1 Is the operator config Available?
+
+Then in a browser:
+# 11.2 Is there a collector at all?
+- `http://localhost:8080` — storefront. Browse products, add to cart, check out
+  to generate traces, metrics, and logs.
+# 11.3 What is the operator complaining about?
+  `adServiceFailure`, `cartServiceFailure`, or `productCatalogFailure`. Within a
+  minute the resulting errors appear in Dash0 under Traces and Logs.
+# 11.4 Is any namespace monitored?
+Leave the `port-forward` command running while you browse; press `Ctrl+C` to
+
+# 11.5 StatefulSet status
+kubectl get statefulsets -A
+
+# 11.6 All pods
+kubectl get pods -A
+stop it.
+
+## 8.5 Browse the demo app and inject failures
+
+The demo already runs a built-in load generator, so traffic flows into Dash0
+without any action. To click through the storefront yourself and trigger errors
+on demand, open it locally with a port-forward (also printed as the
+`demo_app_access` output after apply):
+
+```bash
+aws eks update-kubeconfig --region us-east-1 --name dash0-lab-demo
+kubectl -n otel-demo port-forward svc/frontend-proxy 8080:8080
+```
+
+Then in a browser:
+
+- `http://localhost:8080` — storefront. Browse products, add to cart, check out
+  to generate traces, metrics, and logs.
+- `http://localhost:8080/feature` — flag UI. Toggle a failure flag such as
+  `adServiceFailure`, `cartServiceFailure`, or `productCatalogFailure`. Within a
+  minute the resulting errors appear in Dash0 under Traces and Logs.
+
+Leave the `port-forward` command running while you browse; press `Ctrl+C` to
+stop it.
+
+## 8.5 Browse the demo app and inject failures
+
+The demo already runs a built-in load generator, so traffic flows into Dash0
+without any action. To click through the storefront yourself and trigger errors
+on demand, open it locally with a port-forward (also printed as the
+`demo_app_access` output after apply):
+
+```bash
+aws eks update-kubeconfig --region us-east-1 --name dash0-lab-demo
+kubectl -n otel-demo port-forward svc/frontend-proxy 8080:8080
+```
+
+Then in a browser:
+
+- `http://localhost:8080` — storefront. Browse products, add to cart, check out
+  to generate traces, metrics, and logs.
+- `http://localhost:8080/feature` — flag UI. Toggle a failure flag such as
+  `adServiceFailure`, `cartServiceFailure`, or `productCatalogFailure`. Within a
+  minute the resulting errors appear in Dash0 under Traces and Logs.
+
+Leave the `port-forward` command running while you browse; press `Ctrl+C` to
+stop it.
+
+## 8.5 Browse the demo app and inject failures
+
+The demo already runs a built-in load generator, so traffic flows into Dash0
+without any action. To click through the storefront yourself and trigger errors
+on demand, open it locally with a port-forward (also printed as the
+`demo_app_access` output after apply):
+
+```bash
+aws eks update-kubeconfig --region us-east-1 --name dash0-lab-demo
+kubectl -n otel-demo port-forward svc/frontend-proxy 8080:8080
+```
+
+Then in a browser:
+
+- `http://localhost:8080` — storefront. Browse products, add to cart, check out
+  to generate traces, metrics, and logs.
+- `http://localhost:8080/feature` — flag UI. Toggle a failure flag such as
+  `adServiceFailure`, `cartServiceFailure`, or `productCatalogFailure`. Within a
+  minute the resulting errors appear in Dash0 under Traces and Logs.
+
+Leave the `port-forward` command running while you browse; press `Ctrl+C` to
+stop it.
+
+## 8.5 Browse the demo app and inject failures
+
+The demo already runs a built-in load generator, so traffic flows into Dash0
+without any action. To click through the storefront yourself and trigger errors
+on demand, open it locally with a port-forward (also printed as the
+`demo_app_access` output after apply):
+
+```bash
+aws eks update-kubeconfig --region us-east-1 --name dash0-lab-demo
+kubectl -n otel-demo port-forward svc/frontend-proxy 8080:8080
+```
+
+Then in a browser:
+
+- `http://localhost:8080` — storefront. Browse products, add to cart, check out
+  to generate traces, metrics, and logs.
+- `http://localhost:8080/feature` — flag UI. Toggle a failure flag such as
+  `adServiceFailure`, `cartServiceFailure`, or `productCatalogFailure`. Within a
+  minute the resulting errors appear in Dash0 under Traces and Logs.
+
+Leave the `port-forward` command running while you browse; press `Ctrl+C` to
+stop it.
 
 ## 8.5 Browse the demo app and inject failures
 

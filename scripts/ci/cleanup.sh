@@ -98,6 +98,41 @@ drain_cluster() {
   kubectl delete statefulset --all --all-namespaces --wait=false --ignore-not-found
   kubectl delete pvc --all --all-namespaces --wait=false --ignore-not-found
 
+  # Dash0 operator teardown. `helm uninstall` hangs for 15 minutes and then fails
+  # with "context deadline exceeded" because the operator's own admission
+  # webhooks intercept the deletion of its resources while the operator pod is
+  # itself being removed, and its custom resources carry finalizers. Clearing the
+  # webhooks and the CR finalizers here lets the subsequent helm uninstall in
+  # Terraform complete immediately. Everything is best-effort and ignores errors
+  # so a partially-installed operator does not block the destroy.
+  for wh in \
+    dash0-operator-operator-configuration-mutating \
+    dash0-operator-monitoring-mutating; do
+    kubectl delete mutatingwebhookconfiguration "$wh" --ignore-not-found --wait=false || true
+  done
+  for wh in \
+    dash0-operator-operator-configuration-validator \
+    dash0-operator-monitoring-validator; do
+    kubectl delete validatingwebhookconfiguration "$wh" --ignore-not-found --wait=false || true
+  done
+
+  # Drop finalizers on the Dash0 custom resources so their deletion does not wait
+  # on an operator that is going away.
+  for crd in dash0monitorings.operator.dash0.com dash0operatorconfigurations.operator.dash0.com; do
+    kubectl get "$crd" --all-namespaces -o json 2>/dev/null \
+      | jq -r '.items[] | [.metadata.namespace // "-", .metadata.name] | @tsv' \
+      | while IFS=$'\t' read -r ns name; do
+          [ -z "$name" ] && continue
+          if [ "$ns" = "-" ]; then
+            kubectl patch "$crd" "$name" --type=merge -p '{"metadata":{"finalizers":[]}}' || true
+            kubectl delete "$crd" "$name" --ignore-not-found --wait=false || true
+          else
+            kubectl patch "$crd" "$name" -n "$ns" --type=merge -p '{"metadata":{"finalizers":[]}}' || true
+            kubectl delete "$crd" "$name" -n "$ns" --ignore-not-found --wait=false || true
+          fi
+        done
+  done
+
   for _ in $(seq 1 40); do
     LB_COUNT=$(kubectl get svc --all-namespaces --field-selector spec.type=LoadBalancer -o json 2>/dev/null | jq '.items|length' || echo 0)
     CLOUD_LB_COUNT=$(aws resourcegroupstaggingapi get-resources \
